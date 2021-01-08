@@ -5,7 +5,7 @@ import (
 )
 
 func main() {
-	if err := srshookserver.NewSrsHookServer(":6666").Run(); err != nil {
+	if err := srshookserver.New(":6666", "gin", "release").Run(); err != nil {
 		return
 	}
 }

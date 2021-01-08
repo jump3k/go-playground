@@ -18,10 +18,10 @@ type Error interface {
 }
 
 type err struct {
-	ErrNo  int         `json:"errno"`        //错误码
-	ErrMsg string      `json:"errmsg"`       //错误描述
-	Data   interface{} `json:"data"`         //成功时返回的数据
-	ID     string      `json:"id,omitempty"` //当前请求的唯一ID,便于问题定位
+	ErrNo  int         `json:"errno"`          //错误码
+	ErrMsg string      `json:"errmsg"`         //错误描述
+	Data   interface{} `json:"data,omitempty"` //成功时返回的数据
+	ID     string      `json:"id,omitempty"`   //当前请求的唯一ID,便于问题定位
 }
 
 func NewError(errno int, errmsg string) Error {
