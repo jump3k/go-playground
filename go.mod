@@ -7,6 +7,7 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/google/uuid v1.1.4
+	github.com/nats-io/nats.go v1.9.1
 	github.com/prometheus/client_golang v1.3.0
 	github.com/sirupsen/logrus v1.7.0
 	github.com/sony/gobreaker v0.4.1
