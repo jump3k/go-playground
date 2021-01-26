@@ -14,6 +14,8 @@ import (
 
 func main() {
 	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.With(logger, "time", log.DefaultTimestamp)
+	logger = log.With(logger, "caller", log.DefaultCaller)
 
 	fieldKeys := []string{"method", "error"}
 	requestCount := kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{
