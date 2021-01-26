@@ -51,16 +51,10 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *Conn) Close() error {
-	//TODO
 	return c.conn.Close()
 }
 
 func (c *Conn) Read(b []byte) (int, error) {
-	if err := c.Handshake(); err != nil {
-		return 0, err
-	}
-
-	//TODO
 	return c.conn.Read(b)
 }
 
@@ -99,9 +93,15 @@ func (c *Conn) Serve() {
 		c.LocalAddr().String(), c.LocalAddr().Network(),
 		c.RemoteAddr().String(), c.RemoteAddr().Network())
 
+	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
+		log.Println("failed to set deadline")
+	}
+
 	if err := c.Handshake(); err != nil {
+		log.Printf("serverHandshake error: %v", err)
 		return
 	}
+	log.Println("serverHandshake success.")
 }
 
 func (c *Conn) flush() (int, error) {
