@@ -3,6 +3,7 @@ module playground
 go 1.15
 
 require (
+	github.com/afex/hystrix-go v0.0.0-20180502004556-fa1af6a1f4f5
 	github.com/gin-gonic/gin v1.6.3
 	github.com/go-kit/kit v0.10.0
 	github.com/go-sql-driver/mysql v1.5.0
@@ -11,5 +12,6 @@ require (
 	github.com/prometheus/client_golang v1.3.0
 	github.com/sirupsen/logrus v1.7.0
 	github.com/sony/gobreaker v0.4.1
+	github.com/stretchr/testify v1.6.1 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 )
