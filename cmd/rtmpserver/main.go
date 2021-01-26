@@ -10,6 +10,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("rtmp listen addr: %s(%s)", l.Addr().String(), l.Addr().Network())
 
 	for {
 		conn, err := l.Accept()
