@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"playground/pkg/rtmp"
 )
@@ -18,6 +17,7 @@ func main() {
 			continue
 		}
 
-		fmt.Println(conn.RemoteAddr().String())
+		//fmt.Println(conn.RemoteAddr().String())
+		go conn.(*rtmp.Conn).Serve()
 	}
 }

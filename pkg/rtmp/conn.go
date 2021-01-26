@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"errors"
+	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -91,7 +92,16 @@ func (c *Conn) Handshake() error {
 	}
 
 	return c.handshakeErr
+}
 
+func (c *Conn) Serve() {
+	log.Printf("start to handle rtmp conn, local: %s(%s), remote: %s(%s)\n",
+		c.LocalAddr().String(), c.LocalAddr().Network(),
+		c.RemoteAddr().String(), c.RemoteAddr().Network())
+
+	if err := c.Handshake(); err != nil {
+		return
+	}
 }
 
 func (c *Conn) flush() (int, error) {
