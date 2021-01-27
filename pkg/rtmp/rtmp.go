@@ -1,6 +1,10 @@
 package rtmp
 
-import "net"
+import (
+	"net"
+
+	"github.com/gwuhaolin/livego/protocol/amf"
+)
 
 // Server returns a new RTMP server side conncetion
 func Server(conn net.Conn, config *Config) *Conn {
@@ -9,6 +13,15 @@ func Server(conn net.Conn, config *Config) *Conn {
 		config: config,
 	}
 	c.handshakeFn = c.serverHandshake
+
+	//TODO: config
+	c.localChunksize = 128
+	c.localWindowAckSize = 2500000
+
+	c.chunks = make(map[uint32]*ChunkStream)
+	c.amfDecoder = &amf.Decoder{}
+	c.amfEncoder = &amf.Encoder{}
+
 	return c
 }
 

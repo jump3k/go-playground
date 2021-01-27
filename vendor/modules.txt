@@ -46,6 +46,9 @@ github.com/golang/protobuf/proto
 # github.com/google/uuid v1.1.4
 ## explicit
 github.com/google/uuid
+# github.com/gwuhaolin/livego v0.0.0-20210119152854-12948dfb6782
+## explicit
+github.com/gwuhaolin/livego/protocol/amf
 # github.com/json-iterator/go v1.1.9
 github.com/json-iterator/go
 # github.com/leodido/go-urn v1.2.0
