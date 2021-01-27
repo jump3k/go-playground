@@ -1,6 +1,7 @@
 package rtmp
 
 import (
+	"log"
 	"net"
 
 	"github.com/gwuhaolin/livego/protocol/amf"
@@ -63,4 +64,21 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 		return nil, err
 	}
 	return NewListener(l, config), nil
+}
+
+func ListenAndServe(network, laddr string, config *Config) error {
+	l, err := Listen(network, laddr, config)
+	if err != nil {
+		return err
+	}
+	log.Printf("rtmp Listen at %s(%s)", l.Addr().String(), l.Addr().Network())
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			continue
+		}
+
+		go conn.(*Conn).Serve()
+	}
 }
