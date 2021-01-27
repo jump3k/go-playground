@@ -243,3 +243,14 @@ const (
 	MsgAMF0CommandMessage                                  //0x14
 	MsgAggregateMessage           RtmpMsgTypeID = 22       //0x16
 )
+
+const (
+	cmdConnect       = "connect"
+	cmdFcpublish     = "FCPublish"
+	cmdReleaseStream = "releaseStream"
+	cmdCreateStream  = "createStream"
+	cmdPublish       = "publish"
+	cmdFCUnpublish   = "FCUnpublish"
+	cmdDeleteStream  = "deleteStream"
+	cmdPlay          = "play"
+)

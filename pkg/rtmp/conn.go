@@ -28,6 +28,11 @@ type Conn struct {
 	HandshakeStatus uint32
 	handshakeErr    error
 
+	transactionID            int
+	app                      string
+	flashVer                 string
+	tcUrl                    string
+	objectEncoding           int
 	handleCommandMessageDone bool
 
 	chunks map[uint32]*ChunkStream //<CSID, ChunkStream>
@@ -189,11 +194,150 @@ func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
 	}
 
 	r := bytes.NewReader(cs.ChunkData)
-	reqCs, err := c.amfDecoder.DecodeBatch(r, amf.Version(amf.AMF0))
+	vs, err := c.amfDecoder.DecodeBatch(r, amf.Version(amf.AMF0))
 	if err != nil && err != io.EOF {
 		return err
 	}
-	_ = c.logger.Log("event", "recv request chunkstream", "reqCs", fmt.Sprintf("%#v", reqCs))
+	_ = c.logger.Log("event", "recv request chunkstream", "rtmpChunkBody", fmt.Sprintf("%#v", vs))
+
+	if cmdStr, ok := vs[0].(string); ok {
+		switch cmdStr {
+		case cmdConnect: // "connect"
+			if err := c.handleCmdConnectMessage(vs[1:]); err != nil {
+				return err
+			}
+			if err := c.respCmdConnectMessage(cs); err != nil {
+				return err
+			}
+		case cmdCreateStream:
+			//TODO:
+		case cmdPublish:
+			//TODO:
+		case cmdPlay:
+			//TODO:
+		case cmdFcpublish:
+			//TODO:
+		case cmdReleaseStream:
+			//TODO:
+		case cmdFCUnpublish, cmdDeleteStream:
+			//TODO:
+		default:
+			_ = c.logger.Log("error", fmt.Sprintf("unsupport command=%s", cmdStr))
+		}
+	}
+
+	return nil
+}
+
+func (c *Conn) handleCmdConnectMessage(vs []interface{}) error {
+	for _, v := range vs {
+		switch v.(type) {
+		case string, float64:
+			id := int(v.(float64))
+			if id != 1 {
+				return fmt.Errorf("req error: %s", "id not 1 while connect")
+			}
+			c.transactionID = id
+		case amf.Object:
+			objMap := v.(amf.Object)
+			if app, ok := objMap["app"]; ok {
+				c.app = app.(string)
+			}
+
+			if flashVer, ok := objMap["flashVer"]; ok {
+				c.flashVer = flashVer.(string)
+			}
+
+			if tcUrl, ok := objMap["tcUrl"]; ok {
+				c.tcUrl = tcUrl.(string)
+			}
+
+			if encoding, ok := objMap["objectEncoding"]; ok {
+				c.objectEncoding = int(encoding.(float64))
+			}
+		}
+	}
+
+	_ = c.logger.Log("event", "parse connect command msg",
+		"data", fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', tcUrl: '%s', objectEncoding: %d",
+			c.transactionID, c.app, c.flashVer, c.tcUrl, c.objectEncoding))
+
+	return nil
+}
+
+func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
+	// WindowAcknowledgement Size
+	respCs := NewChunkStream().SetControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
+	if err := c.writeChunStream(respCs); err != nil {
+		_ = c.logger.Log("event", "Set WindowAckSize Message", "error", err.Error())
+		return err
+	}
+	_ = c.logger.Log("event", "Send WindowAckSize Message", "ret", "success")
+
+	// Set Peer Bandwidth
+	respCs = NewChunkStream().SetControlMessage(MsgSetPeerBandwidth, 5, 2500000)
+	respCs.ChunkData[4] = 2
+	if err := c.writeChunStream(respCs); err != nil {
+		_ = c.logger.Log("event", "Set Peer Bandwidth", "error", err.Error())
+		return err
+	}
+	_ = c.logger.Log("event", "Set Peer Bandwidth", "ret", "success")
+
+	// set chunk size
+	respCs = NewChunkStream().SetControlMessage(MsgSetChunkSize, 4, c.localChunksize)
+	if err := c.writeChunStream(respCs); err != nil {
+		_ = c.logger.Log("event", "Set Chunk Size", "error", err.Error())
+		return err
+	}
+	_ = c.logger.Log("event", "Set Chunk Size", "ret", "success")
+
+	// NetConnection.Connect.Success
+	resp := make(amf.Object)
+	resp["fmsVer"] = "FMS/3,0,1,123"
+	resp["capabilities"] = 31
+
+	event := make(amf.Object)
+	event["level"] = "status"
+	event["code"] = "NetConnection.Connect.Success"
+	event["description"] = "Connection succeeded."
+	event["objectEncoding"] = c.objectEncoding
+	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, resp, event); err != nil {
+		_ = c.logger.Log("event", "NetConnection.Connect.Success", "error", err.Error())
+		return err
+	}
+	_ = c.logger.Log("event", "NetConnection.Connect.Success", "ret", "success")
+
+	return nil
+}
+
+func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
+	var bytesSend []byte
+	for _, v := range args {
+		if _, err := c.amfEncoder.Encode(bytes.NewBuffer(bytesSend), v, amf.AMF0); err != nil {
+			_ = c.logger.Log("event", "amf encode", "error", err.Error())
+			return err
+		}
+	}
+
+	cs := ChunkStream{
+		ChunkHeader: ChunkHeader{
+			ChunkBasicHeader: ChunkBasicHeader{
+				Fmt:  0,
+				Csid: csid,
+			},
+			ChunkMessageHeader: ChunkMessageHeader{
+				TimeStamp:   0,
+				MsgLength:   uint32(len(bytesSend)),
+				MsgTypeID:   MsgAMF0CommandMessage,
+				MsgStreamID: streamID,
+			},
+		},
+		ChunkData: bytesSend,
+	}
+
+	if err := c.writeChunStream(&cs); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -219,7 +363,7 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 			cs.Fmt = 3
 		}
 
-		if err := c.writeHeader(cs); err != nil {
+		if err := c.writeHeader(cs); err != nil { //write rtmp chunk header
 			return err
 		}
 
@@ -233,7 +377,7 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 		totalLen += inc
 
 		buf := cs.ChunkData[start : start+inc]
-		if _, err := c.Write(buf); err != nil {
+		if _, err := c.Write(buf); err != nil { //write rtmp chunk body
 			return err
 		}
 	}
@@ -247,7 +391,7 @@ func (c *Conn) writeHeader(cs *ChunkStream) error {
 	switch {
 	case cs.Csid < 64:
 		h |= uint8(cs.Csid)
-		//TODO
+		//TODO:
 	}
 
 	return nil
