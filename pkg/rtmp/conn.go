@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gwuhaolin/livego/protocol/amf"
 )
 
@@ -21,6 +22,7 @@ type Conn struct {
 	handshakeFn func() error // (*Conn).clientHandshake or serverHandshake
 
 	config *Config
+	logger log.Logger
 
 	handshakeMutex  sync.Mutex
 	HandshakeStatus uint32
@@ -108,25 +110,27 @@ func (c *Conn) Handshake() error {
 }
 
 func (c *Conn) Serve() {
-	log.Printf("start to handle rtmp conn, local: %s(%s), remote: %s(%s)\n",
-		c.LocalAddr().String(), c.LocalAddr().Network(),
-		c.RemoteAddr().String(), c.RemoteAddr().Network())
+	_ = c.logger.Log(
+		"event", "start to handle rtmp conn",
+		"local", c.LocalAddr().String()+" ("+c.LocalAddr().Network()+")",
+		"remote", c.RemoteAddr().String()+" ("+c.RemoteAddr().Network()+")",
+	)
 
 	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
-		log.Println("failed to set deadline")
+		_ = c.logger.Log("event", "failed to set deadline")
 	}
 
 	if err := c.Handshake(); err != nil {
-		log.Printf("serverHandshake error: %v", err)
+		_ = c.logger.Log("event", "serverHandshake", "error", err.Error())
 		return
 	}
-	log.Println("serverHandshake success.")
+	_ = c.logger.Log("event", "serverHandshake", "ret", "success")
 
 	if err := c.handleCommandMessage(); err != nil {
-		log.Printf("handleCommandMessage error: %v", err)
+		_ = c.logger.Log("event", "handleCommandMessage", "error", err.Error())
 		return
 	}
-	log.Println("handleCommandMessage success.")
+	_ = c.logger.Log("event", "handleCommandMessage", "ret", "success")
 }
 
 func (c *Conn) handleCommandMessage() error {
@@ -173,7 +177,7 @@ func (c *Conn) ack(size uint32) {
 	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
 		cs := NewChunkStream().SetControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
-			log.Printf("send Acknowledgement message error: %v", err)
+			_ = c.logger.Log("event", "send Ack", "error", err.Error())
 		}
 		c.ackSeqNumber = 0
 	}
@@ -189,7 +193,7 @@ func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
 	if err != nil && err != io.EOF {
 		return err
 	}
-	log.Printf("rtmp request chunkStream: %#v", reqCs)
+	_ = c.logger.Log("event", "recv request chunkstream", "reqCs", fmt.Sprintf("%#v", reqCs))
 
 	return nil
 }

@@ -1,9 +1,12 @@
 package rtmp
 
 import (
-	"log"
+	//"log"
+	"fmt"
 	"net"
+	"os"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gwuhaolin/livego/protocol/amf"
 )
 
@@ -22,6 +25,8 @@ func Server(conn net.Conn, config *Config) *Conn {
 	c.chunks = make(map[uint32]*ChunkStream)
 	c.amfDecoder = &amf.Decoder{}
 	c.amfEncoder = &amf.Encoder{}
+
+	c.logger = config.logger
 
 	return c
 }
@@ -67,11 +72,19 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 }
 
 func ListenAndServe(network, laddr string, config *Config) error {
+	if config.logger == nil {
+		logger := log.NewLogfmtLogger(os.Stderr)
+		logger = log.With(logger, "time", log.DefaultTimestamp)
+		logger = log.With(logger, "caller", log.DefaultCaller)
+		config.logger = logger
+	}
+
 	l, err := Listen(network, laddr, config)
 	if err != nil {
 		return err
 	}
-	log.Printf("rtmp Listen at %s(%s)", l.Addr().String(), l.Addr().Network())
+
+	_ = config.logger.Log("event", "rtmp listen", "addr", fmt.Sprintf("%s[%s]", l.Addr().String(), l.Addr().Network()))
 
 	for {
 		conn, err := l.Accept()
