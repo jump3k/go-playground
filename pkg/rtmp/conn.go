@@ -426,7 +426,9 @@ func (c *Conn) publishOrPlay(vs []interface{}) error {
 			if k == 2 {
 				c.streamName = v.(string)
 			} else if k == 3 {
-				c.appName = v.(string)
+				if c.appName == "" {
+					c.appName = v.(string) //has assigned very likely while decode connect command message
+				}
 			}
 		case float64:
 			c.transactionID = int(v.(float64))
