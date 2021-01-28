@@ -92,7 +92,7 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 
 	totalLen := uint32(0)
 	numChunks := (cs.MsgLength / c.localChunksize) // split by local chunk size
-	for i := uint32(0); i < numChunks; i++ {
+	for i := uint32(0); i <= numChunks; i++ {
 		if totalLen == cs.MsgLength {
 			break
 		}
