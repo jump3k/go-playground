@@ -28,11 +28,15 @@ type Conn struct {
 	HandshakeStatus uint32
 	handshakeErr    error
 
-	transactionID            int
-	app                      string
-	flashVer                 string
-	tcUrl                    string
-	objectEncoding           int
+	transactionID int
+
+	// client connect info
+	app            string
+	flashVer       string
+	swfUrl         string
+	tcUrl          string
+	objectEncoding int
+
 	handleCommandMessageDone bool
 
 	chunks map[uint32]*ChunkStream //<CSID, ChunkStream>
@@ -147,12 +151,18 @@ func (c *Conn) handleCommandMessage() error {
 		}
 		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "data", fmt.Sprintf("%#v", cs))
 
-		c.handleControlMessage(cs) // save remote chunksize and window ack size
+		//c.handleControlMessage(cs) // save remote chunksize and window ack size
 		c.ack(cs.MsgLength)
 
 		switch cs.MsgTypeID {
+		case MsgSetChunkSize:
+			c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
+			_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
+		case MsgWindowAcknowledgementSize:
+			c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
+			_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
 		case MsgAMF0CommandMessage, MsgAMF3CommandMessage:
-			if err := c.responseCommandMessage(cs); err != nil {
+			if err := c.decodeCommandMessage(cs); err != nil {
 				return err
 			}
 		}
@@ -165,6 +175,7 @@ func (c *Conn) handleCommandMessage() error {
 	return nil
 }
 
+/*
 func (c *Conn) handleControlMessage(cs *ChunkStream) {
 	if cs.MsgTypeID == MsgSetChunkSize {
 		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
@@ -174,6 +185,7 @@ func (c *Conn) handleControlMessage(cs *ChunkStream) {
 		_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
 	}
 }
+*/
 
 func (c *Conn) ack(size uint32) {
 	c.bytesSent += size
@@ -194,7 +206,7 @@ func (c *Conn) ack(size uint32) {
 	}
 }
 
-func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
+func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 	if cs.MsgTypeID == MsgAMF3CommandMessage {
 		cs.ChunkData = cs.ChunkData[1:]
 	}
@@ -210,10 +222,10 @@ func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
 	if cmdStr, ok := vs[0].(string); ok {
 		switch cmdStr {
 		case cmdConnect: // "connect"
-			if err := c.handleCmdConnectMessage(vs[1:]); err != nil {
+			if err := c.decodeConnectCmdMessage(vs[1:]); err != nil {
 				return err
 			}
-			if err := c.respCmdConnectMessage(cs); err != nil {
+			if err := c.respConnectCmdMessage(cs); err != nil {
 				return err
 			}
 		case cmdCreateStream:
@@ -238,7 +250,7 @@ func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
 	return nil
 }
 
-func (c *Conn) handleCmdConnectMessage(vs []interface{}) error {
+func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 	for _, v := range vs {
 		switch v.(type) {
 		case string, float64:
@@ -257,6 +269,10 @@ func (c *Conn) handleCmdConnectMessage(vs []interface{}) error {
 				c.flashVer = flashVer.(string)
 			}
 
+			if swfUrl, ok := objMap["swfUrl"]; ok {
+				c.swfUrl = swfUrl.(string)
+			}
+
 			if tcUrl, ok := objMap["tcUrl"]; ok {
 				c.tcUrl = tcUrl.(string)
 			}
@@ -268,13 +284,13 @@ func (c *Conn) handleCmdConnectMessage(vs []interface{}) error {
 	}
 
 	_ = c.logger.Log("level", "INFO", "event", "parse connect command msg",
-		"data", fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', tcUrl: '%s', objectEncoding: %d",
-			c.transactionID, c.app, c.flashVer, c.tcUrl, c.objectEncoding))
+		"data", fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', swfUrl: '%s', tcUrl: '%s', objectEncoding: %d",
+			c.transactionID, c.app, c.flashVer, c.swfUrl, c.tcUrl, c.objectEncoding))
 
 	return nil
 }
 
-func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
+func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	// WindowAcknowledgement Size
 	respCs := newChunkStream().asControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
 	if err := c.writeChunStream(respCs); err != nil {
