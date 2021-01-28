@@ -37,6 +37,8 @@ type Conn struct {
 	tcUrl          string
 	objectEncoding int
 
+	isPublisher bool
+
 	handleCommandMessageDone bool
 
 	chunks map[uint32]*ChunkStream //<CSID, ChunkStream>
@@ -229,17 +231,39 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 				return err
 			}
 		case cmdCreateStream:
-			//TODO:
+			if err := c.decodeCreateStreamCmdMessage(vs[1:]); err != nil {
+				return err
+			}
+			if err := c.respCreateStreamCmdMessage(cs); err != nil {
+				return err
+			}
 		case cmdPublish:
-			//TODO:
+			if err := c.decodePulishCmdMessage(vs[1:]); err != nil {
+				return err
+			}
+			if err := c.respPulishCmdMessage(cs); err != nil {
+				return err
+			}
+
+			c.handleCommandMessageDone = true
+			c.isPublisher = true
+			_ = c.logger.Log("level", "INFO", "event", "decode Publish Msg", "ret", "success")
 		case cmdPlay:
-			//TODO:
+			if err := c.decodePlayCmdMessage(vs[1:]); err != nil {
+				return err
+			}
+			if err := c.respPlayCmdMessage(cs); err != nil {
+				return err
+			}
+
+			c.handleCommandMessageDone = true
+			c.isPublisher = false
+			_ = c.logger.Log("level", "INFO", "event", "decode Play Msg", "ret", "success")
 		case cmdFcpublish:
-			//TODO:
+			_ = c.decodeFcPublishCmdMessage(vs[1:]) //do nothing
 		case cmdReleaseStream:
-			//TODO:
+			_ = c.decodeReleaseStreamCmdMessage(vs[1:]) //do nothing
 		case cmdFCUnpublish, cmdDeleteStream:
-			//TODO:
 		default:
 			err := fmt.Errorf("unsupport command=%s", cmdStr)
 			_ = c.logger.Log("level", "ERROR", "event", "parse AMF command", "error", err.Error())
@@ -334,6 +358,58 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 
 	return nil
 }
+
+func (c *Conn) decodeCreateStreamCmdMessage(vs interface{}) error {
+	//TODO:
+	return nil
+}
+
+func (c *Conn) respCreateStreamCmdMessage(cs *ChunkStream) error {
+	//TODO:
+	return nil
+}
+
+func (c *Conn) decodePulishCmdMessage(vs interface{}) error {
+	//TODO:
+	return nil
+}
+
+func (c *Conn) respPulishCmdMessage(cs *ChunkStream) error {
+	//TODO:
+	return nil
+}
+
+func (c *Conn) decodePlayCmdMessage(vs interface{}) error {
+	//TODO:
+	return nil
+}
+
+func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
+	//TODO:
+	return nil
+}
+
+func (c *Conn) decodeFcPublishCmdMessage(vs interface{}) error {
+	return nil
+}
+
+/*
+func (c *Conn) respFcPublishCmdMessage(cs *ChunkStream) error {
+	//TODO:
+	return nil
+}
+*/
+
+func (c *Conn) decodeReleaseStreamCmdMessage(vs interface{}) error {
+	return nil
+}
+
+/*
+func (c *Conn) respReleaseStreamCmdMessage(cs *ChunkStream) error {
+	//TODO:
+	return nil
+}
+*/
 
 // send MsgAMF0CommandMessage msg
 func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
