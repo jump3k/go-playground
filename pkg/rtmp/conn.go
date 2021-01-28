@@ -168,11 +168,11 @@ func (c *Conn) handleCommandMessage() error {
 func (c *Conn) handleControlMessage(cs *ChunkStream) {
 	if cs.MsgTypeID == MsgSetChunkSize {
 		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
+		_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
 	} else if cs.MsgTypeID == MsgWindowAcknowledgementSize {
 		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
+		_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
 	}
-	_ = c.logger.Log("level", "INFO", "event", "save remote chunkSize/WinAckSize", "data",
-		fmt.Sprintf("remoteChunkSize: %d, remoteWinAckSize: %d", c.remoteChunkSize, c.remoteWindowAckSize))
 }
 
 func (c *Conn) ack(size uint32) {
