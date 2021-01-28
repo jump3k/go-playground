@@ -145,7 +145,7 @@ func (c *Conn) handleCommandMessage() error {
 			_ = c.logger.Log("level", "ERROR", "event", "recv chunk stream", "error", err.Error())
 			return err
 		}
-		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "ret", "success")
+		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "data", fmt.Sprintf("%#v", cs))
 
 		c.handleControlMessage(cs) // save remote chunksize and window ack size
 		c.ack(cs.MsgLength)
@@ -171,6 +171,8 @@ func (c *Conn) handleControlMessage(cs *ChunkStream) {
 	} else if cs.MsgTypeID == MsgWindowAcknowledgementSize {
 		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
 	}
+	_ = c.logger.Log("level", "INFO", "event", "save remote chunkSize/WinAckSize", "data",
+		fmt.Sprintf("remoteChunkSize: %d, remoteWinAckSize: %d", c.remoteChunkSize, c.remoteWindowAckSize))
 }
 
 func (c *Conn) ack(size uint32) {
@@ -186,6 +188,8 @@ func (c *Conn) ack(size uint32) {
 		if err := c.writeChunStream(cs); err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
 		}
+		_ = c.logger.Log("level", "INFO", "event", "send Ack", "ret", "success")
+
 		c.ackSeqNumber = 0
 	}
 }

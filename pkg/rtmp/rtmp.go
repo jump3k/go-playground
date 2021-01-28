@@ -20,7 +20,9 @@ func Server(conn net.Conn, config *Config) *Conn {
 
 	//TODO: config
 	c.localChunksize = 128
+	c.remoteChunkSize = 128
 	c.localWindowAckSize = 2500000
+	c.remoteWindowAckSize = 250000
 
 	c.chunks = make(map[uint32]*ChunkStream)
 	c.amfDecoder = &amf.Decoder{}
@@ -73,7 +75,7 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 
 func ListenAndServe(network, laddr string, config *Config) error {
 	if config.logger == nil {
-		logger := log.NewLogfmtLogger(os.Stderr)
+		logger := log.NewLogfmtLogger(os.Stdout)
 		logger = log.With(logger, "time", log.DefaultTimestamp)
 		logger = log.With(logger, "caller", log.DefaultCaller)
 		config.logger = logger

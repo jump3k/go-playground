@@ -3,7 +3,6 @@ package rtmp
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 )
 
 type ChunkBasicHeader struct {
@@ -53,6 +52,8 @@ func (cs *ChunkStream) SetControlMessage(typeID RtmpMsgTypeID, length uint32, va
 }
 
 func (c *Conn) ReadChunkStream() (*ChunkStream, error) {
+	_ = c.logger.Log("level", "INFO", "event", "Attempt to read a full chunk stream")
+
 	for {
 		h, err := c.ReadUint(1, true)
 		if err != nil {
@@ -72,7 +73,7 @@ func (c *Conn) ReadChunkStream() (*ChunkStream, error) {
 		if err := c.readChunk(cs); err != nil {
 			return nil, err
 		}
-		c.chunks[csid] = cs
+		//c.chunks[csid] = cs
 
 		if cs.gotFull {
 			return cs, nil
@@ -163,7 +164,7 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 		} else {
 			if cs.timeExtended {
 				b := make([]byte, 4)
-				if _, err := io.ReadAtLeast(c, b, 4); err != nil { //TODO: peek
+				if _, err := c.Read(b); err != nil { //peek
 					return err
 				}
 
@@ -183,8 +184,8 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 	}
 
 	size := cs.remain
-	if size > c.localChunksize {
-		size = c.localChunksize
+	if size > c.remoteChunkSize {
+		size = c.remoteChunkSize //important: read chunk from peer accord to min(remoteChunkSize, cs.remain)
 	}
 
 	buf := cs.ChunkData[cs.index : cs.index+size]
@@ -205,17 +206,17 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 func (c *Conn) ReadUint(n int, bigEndian bool) (uint32, error) {
 	ret := uint32(0)
 
-	oneByte := make([]byte, 1)
-	for i := 0; i < n; i++ {
-		_, err := io.ReadAtLeast(c, oneByte, 1)
-		if err != nil {
-			return 0, err
-		}
+	bytes := make([]byte, n)
+	if _, err := c.Read(bytes); err != nil {
+		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte", n), "error", err.Error())
+		return 0, err
+	}
 
+	for i := 0; i < n; i++ {
 		if bigEndian { // big endian
-			ret = ret<<8 + uint32(oneByte[0])
+			ret = ret<<8 + uint32(bytes[i])
 		} else { // little endian
-			ret += uint32(oneByte[0]) << uint32(i*8)
+			ret += uint32(bytes[i]) << uint32(i*8)
 		}
 	}
 
