@@ -321,13 +321,14 @@ func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
 
 // send MsgAMF0CommandMessage msg
 func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
-	var bytesSend []byte
+	buffer := bytes.NewBuffer([]byte{})
 	for _, v := range args {
-		if _, err := c.amfEncoder.Encode(bytes.NewBuffer(bytesSend), v, amf.AMF0); err != nil {
+		if _, err := c.amfEncoder.Encode(buffer, v, amf.AMF0); err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "amf encode", "error", err.Error())
 			return err
 		}
 	}
+	cmdMsgBody := buffer.Bytes()
 
 	cs := ChunkStream{
 		ChunkHeader: ChunkHeader{
@@ -337,12 +338,12 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 			},
 			ChunkMessageHeader: ChunkMessageHeader{
 				TimeStamp:   0,
-				MsgLength:   uint32(len(bytesSend)),
+				MsgLength:   uint32(len(cmdMsgBody)),
 				MsgTypeID:   MsgAMF0CommandMessage,
 				MsgStreamID: streamID,
 			},
 		},
-		ChunkData: bytesSend,
+		ChunkData: cmdMsgBody,
 	}
 
 	if err := c.writeChunStream(&cs); err != nil {

@@ -249,11 +249,50 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 
 func (c *Conn) writeHeader(cs *ChunkStream) error {
 	// basic header
-	h := cs.Fmt << 6
+	h := uint32(cs.Fmt) << 6
 	switch {
 	case cs.Csid < 64:
-		h |= uint8(cs.Csid)
-		//TODO:
+		h |= cs.Csid
+		_ = c.writeUint(h, 1, true)
+	case cs.Csid-64 < 256:
+		h |= 0
+		_ = c.writeUint(h, 1, true)
+		_ = c.writeUint(cs.Csid-64, 1, false)
+	case cs.Csid-64 < 65536:
+		h |= 1
+		_ = c.writeUint(h, 1, true)
+		_ = c.writeUint(cs.Csid-64, 2, false)
+	}
+
+	// message header
+	ts := cs.TimeStamp
+	if cs.Fmt == 3 {
+		goto END
+	}
+
+	if cs.TimeStamp > 0xffffff {
+		ts = 0xffffff
+	}
+	_ = c.writeUint(ts, 3, true)
+
+	if cs.Fmt == 2 {
+		goto END
+	}
+
+	if cs.MsgLength > 0xffffff {
+		return fmt.Errorf("length=%d", cs.MsgLength)
+	}
+	_ = c.writeUint(cs.MsgLength, 3, true)
+	_ = c.writeUint(uint32(cs.MsgTypeID), 1, true)
+
+	if cs.Fmt == 1 {
+		goto END
+	}
+	_ = c.writeUint(cs.MsgStreamID, 4, false)
+
+END:
+	if ts > 0xffffff {
+		_ = c.writeUint(cs.TimeStamp, 4, true)
 	}
 
 	return nil
@@ -263,8 +302,8 @@ func (c *Conn) ReadUint(n int, bigEndian bool) (uint32, error) {
 	ret := uint32(0)
 
 	bytes := make([]byte, n)
-	if _, err := c.Read(bytes); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte", n), "error", err.Error())
+	if nr, err := c.Read(bytes); err != nil {
+		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte, actual: %d", n, nr), "error", err.Error())
 		return 0, err
 	}
 
@@ -277,6 +316,26 @@ func (c *Conn) ReadUint(n int, bigEndian bool) (uint32, error) {
 	}
 
 	return ret, nil
+}
+
+func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
+	buf := make([]byte, nbytes)
+	for i := 0; i < nbytes; i++ {
+		if bigEndian {
+			v := val >> ((nbytes - i - 1) << 3)
+			buf[i] = byte(v) & 0xff
+		} else {
+			buf[i] = byte(val) & 0xff
+			val = val >> 8
+		}
+	}
+
+	if nw, err := c.Write(buf); err != nil {
+		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("write %d byte, actual: %d", nbytes, nw), "error", err.Error())
+		return err
+	}
+
+	return nil
 }
 
 type RtmpMsgTypeID uint32
