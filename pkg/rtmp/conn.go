@@ -140,7 +140,7 @@ func (c *Conn) Serve() {
 
 func (c *Conn) handleCommandMessage() error {
 	for {
-		cs, err := c.ReadChunkStream() //read one chunk stream data fully
+		cs, err := c.readChunkStream()
 		if err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "recv chunk stream", "error", err.Error())
 			return err
@@ -184,7 +184,7 @@ func (c *Conn) ack(size uint32) {
 
 	c.ackSeqNumber += size
 	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
-		cs := NewChunkStream().SetControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
+		cs := newChunkStream().asControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
 		}
@@ -276,7 +276,7 @@ func (c *Conn) handleCmdConnectMessage(vs []interface{}) error {
 
 func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
 	// WindowAcknowledgement Size
-	respCs := NewChunkStream().SetControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
+	respCs := newChunkStream().asControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set WindowAckSize Message", "error", err.Error())
 		return err
@@ -284,7 +284,7 @@ func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
 	_ = c.logger.Log("level", "INFO", "event", "Send WindowAckSize Message", "ret", "success")
 
 	// Set Peer Bandwidth
-	respCs = NewChunkStream().SetControlMessage(MsgSetPeerBandwidth, 5, 2500000)
+	respCs = newChunkStream().asControlMessage(MsgSetPeerBandwidth, 5, 2500000)
 	respCs.ChunkData[4] = 2
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set Peer Bandwidth", "error", err.Error())
@@ -293,7 +293,7 @@ func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
 	_ = c.logger.Log("level", "INFO", "event", "Set Peer Bandwidth", "ret", "success")
 
 	// set chunk size
-	respCs = NewChunkStream().SetControlMessage(MsgSetChunkSize, 4, c.localChunksize)
+	respCs = newChunkStream().asControlMessage(MsgSetChunkSize, 4, c.localChunksize)
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set Chunk Size", "error", err.Error())
 		return err
@@ -347,61 +347,6 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 
 	if err := c.writeChunStream(&cs); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func (c *Conn) writeChunStream(cs *ChunkStream) error {
-	switch cs.MsgTypeID {
-	case MsgAudioMessage:
-		cs.Csid = 4
-	case MsgVideoMessage, MsgAMF3DataMessage, MSGAMF0DataMessage:
-		cs.Csid = 6
-	}
-
-	totalLen := uint32(0)
-	numChunks := (cs.MsgLength / c.localChunksize) // split by local chunk size
-	for i := uint32(0); i < numChunks; i++ {
-		if totalLen == cs.MsgLength {
-			break
-		}
-
-		if i == 0 {
-			cs.Fmt = 0
-		} else {
-			cs.Fmt = 3
-		}
-
-		if err := c.writeHeader(cs); err != nil { //write rtmp chunk header
-			return err
-		}
-
-		inc := c.localChunksize
-		start := i * c.localChunksize
-
-		leftLen := uint32(len(cs.ChunkData)) - start
-		if leftLen < c.localChunksize {
-			inc = leftLen
-		}
-		totalLen += inc
-
-		buf := cs.ChunkData[start : start+inc]
-		if _, err := c.Write(buf); err != nil { //write rtmp chunk body
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *Conn) writeHeader(cs *ChunkStream) error {
-	// basic header
-	h := cs.Fmt << 6
-	switch {
-	case cs.Csid < 64:
-		h |= uint8(cs.Csid)
-		//TODO:
 	}
 
 	return nil

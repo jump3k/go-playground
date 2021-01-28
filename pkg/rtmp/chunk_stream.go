@@ -27,7 +27,6 @@ type ChunkStream struct {
 	ChunkHeader
 	ChunkData []byte
 
-	//TODO: help variable here?
 	tmpFormat    uint8
 	timeExtended bool
 	gotFull      bool
@@ -35,11 +34,11 @@ type ChunkStream struct {
 	remain       uint32
 }
 
-func NewChunkStream() *ChunkStream {
+func newChunkStream() *ChunkStream {
 	return &ChunkStream{}
 }
 
-func (cs *ChunkStream) SetControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
+func (cs *ChunkStream) asControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
 	cs.Fmt = 0
 	cs.Csid = 2
 	cs.MsgTypeID = typeID
@@ -51,7 +50,8 @@ func (cs *ChunkStream) SetControlMessage(typeID RtmpMsgTypeID, length uint32, va
 	return cs
 }
 
-func (c *Conn) ReadChunkStream() (*ChunkStream, error) {
+//read one chunk stream fully
+func (c *Conn) readChunkStream() (*ChunkStream, error) {
 	_ = c.logger.Log("level", "INFO", "event", "Attempt to read a full chunk stream")
 
 	for {
@@ -64,7 +64,7 @@ func (c *Conn) ReadChunkStream() (*ChunkStream, error) {
 		csid := h & 0x3f
 		cs, ok := c.chunks[csid]
 		if !ok {
-			cs = &ChunkStream{}
+			cs = newChunkStream()
 			c.chunks[csid] = cs
 		}
 
@@ -79,6 +79,50 @@ func (c *Conn) ReadChunkStream() (*ChunkStream, error) {
 			return cs, nil
 		}
 	}
+}
+
+// write one chunk stream fully
+func (c *Conn) writeChunStream(cs *ChunkStream) error {
+	switch cs.MsgTypeID {
+	case MsgAudioMessage:
+		cs.Csid = 4
+	case MsgVideoMessage, MsgAMF3DataMessage, MSGAMF0DataMessage:
+		cs.Csid = 6
+	}
+
+	totalLen := uint32(0)
+	numChunks := (cs.MsgLength / c.localChunksize) // split by local chunk size
+	for i := uint32(0); i < numChunks; i++ {
+		if totalLen == cs.MsgLength {
+			break
+		}
+
+		if i == 0 {
+			cs.Fmt = 0
+		} else {
+			cs.Fmt = 3
+		}
+
+		if err := c.writeHeader(cs); err != nil { //write rtmp chunk header
+			return err
+		}
+
+		inc := c.localChunksize
+		start := i * c.localChunksize
+
+		leftLen := uint32(len(cs.ChunkData)) - start
+		if leftLen < c.localChunksize {
+			inc = leftLen
+		}
+		totalLen += inc
+
+		buf := cs.ChunkData[start : start+inc]
+		if _, err := c.Write(buf); err != nil { //write rtmp chunk body
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *Conn) readChunk(cs *ChunkStream) error {
@@ -198,6 +242,18 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 		if cs.remain == 0 {
 			cs.gotFull = true
 		}
+	}
+
+	return nil
+}
+
+func (c *Conn) writeHeader(cs *ChunkStream) error {
+	// basic header
+	h := cs.Fmt << 6
+	switch {
+	case cs.Csid < 64:
+		h |= uint8(cs.Csid)
+		//TODO:
 	}
 
 	return nil
