@@ -7,12 +7,18 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/gwuhaolin/livego/protocol/amf"
+)
+
+var (
+	reTcUrl = regexp.MustCompile(`rtmp\:\/\/([^\/\:]+)(\:([^\/]+))?\/([^\?]+)(\?vhost=([^\/]+))?`)
 )
 
 type Conn struct {
@@ -38,6 +44,8 @@ type Conn struct {
 	objectEncoding int
 
 	streamName  string
+	domain      string
+	args        string
 	isPublisher bool
 
 	handleCommandMessageDone bool
@@ -95,6 +103,39 @@ func (c *Conn) Write(b []byte) (int, error) {
 	return c.conn.Write(b)
 }
 
+func (c *Conn) Serve() {
+	defer c.Close()
+
+	_ = c.logger.Log("level", "INFO",
+		"event", "start to handle rtmp conn",
+		"local", c.LocalAddr().String()+" ("+c.LocalAddr().Network()+")",
+		"remote", c.RemoteAddr().String()+" ("+c.RemoteAddr().Network()+")",
+	)
+
+	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
+		_ = c.logger.Log("level", "ERROR", "event", "failed to set deadline")
+	}
+
+	if err := c.Handshake(); err != nil {
+		_ = c.logger.Log("level", "ERROR", "event", "serverHandshake", "error", err.Error())
+		return
+	}
+	_ = c.logger.Log("level", "INFO", "event", "serverHandshake", "ret", "success")
+
+	if err := c.handleCommandMessage(); err != nil {
+		_ = c.logger.Log("level", "ERROR", "event", "handleCommandMessage", "error", err.Error())
+		return
+	}
+	_ = c.logger.Log("level", "INFO", "event", "handleCommandMessage", "ret", "success")
+
+	if err := c.discoverTcUrl(); err != nil {
+		_ = c.logger.Log("level", "INFO", "event", "discover tcUrl", "error", err.Error())
+		return
+	}
+	_ = c.logger.Log("level", "INFO", "event", "discover tcUrl", "data",
+		fmt.Sprintf("domain: %s, app: %s, stream: %s, args: %s", c.domain, c.appName, c.streamName, c.args))
+}
+
 func (c *Conn) Handshake() error {
 	c.handshakeMutex.Lock()
 	defer c.handshakeMutex.Unlock()
@@ -119,30 +160,6 @@ func (c *Conn) Handshake() error {
 	}
 
 	return c.handshakeErr
-}
-
-func (c *Conn) Serve() {
-	_ = c.logger.Log("level", "INFO",
-		"event", "start to handle rtmp conn",
-		"local", c.LocalAddr().String()+" ("+c.LocalAddr().Network()+")",
-		"remote", c.RemoteAddr().String()+" ("+c.RemoteAddr().Network()+")",
-	)
-
-	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
-		_ = c.logger.Log("level", "ERROR", "event", "failed to set deadline")
-	}
-
-	if err := c.Handshake(); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "serverHandshake", "error", err.Error())
-		return
-	}
-	_ = c.logger.Log("level", "INFO", "event", "serverHandshake", "ret", "success")
-
-	if err := c.handleCommandMessage(); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "handleCommandMessage", "error", err.Error())
-		return
-	}
-	_ = c.logger.Log("level", "INFO", "event", "handleCommandMessage", "ret", "success")
 }
 
 func (c *Conn) handleCommandMessage() error {
@@ -173,6 +190,33 @@ func (c *Conn) handleCommandMessage() error {
 		if c.handleCommandMessageDone {
 			break
 		}
+	}
+
+	return nil
+}
+
+func (c *Conn) discoverTcUrl() error {
+	matches := reTcUrl.FindStringSubmatch(c.tcUrl)
+
+	host := matches[1]  //ip addr or domain
+	vhost := matches[6] //vhost=?
+
+	c.domain = vhost
+	if c.domain == "" {
+		c.domain = host
+	}
+
+	if idx := strings.Index(c.appName, "?"); idx > 0 {
+		c.appName = c.appName[:idx]
+		c.appName = strings.Trim(c.appName, " ")
+	}
+
+	if idx := strings.Index(c.streamName, "?"); idx > 0 {
+		c.args = c.streamName[idx+1:]
+		c.streamName = c.streamName[:idx]
+
+		c.args = strings.Trim(c.args, " ")
+		c.streamName = strings.Trim(c.streamName, " ")
 	}
 
 	return nil
