@@ -115,35 +115,37 @@ func (c *Conn) Handshake() error {
 }
 
 func (c *Conn) Serve() {
-	_ = c.logger.Log(
+	_ = c.logger.Log("level", "INFO",
 		"event", "start to handle rtmp conn",
 		"local", c.LocalAddr().String()+" ("+c.LocalAddr().Network()+")",
 		"remote", c.RemoteAddr().String()+" ("+c.RemoteAddr().Network()+")",
 	)
 
 	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
-		_ = c.logger.Log("event", "failed to set deadline")
+		_ = c.logger.Log("level", "ERROR", "event", "failed to set deadline")
 	}
 
 	if err := c.Handshake(); err != nil {
-		_ = c.logger.Log("event", "serverHandshake", "error", err.Error())
+		_ = c.logger.Log("level", "ERROR", "event", "serverHandshake", "error", err.Error())
 		return
 	}
-	_ = c.logger.Log("event", "serverHandshake", "ret", "success")
+	_ = c.logger.Log("level", "INFO", "event", "serverHandshake", "ret", "success")
 
 	if err := c.handleCommandMessage(); err != nil {
-		_ = c.logger.Log("event", "handleCommandMessage", "error", err.Error())
+		_ = c.logger.Log("level", "ERROR", "event", "handleCommandMessage", "error", err.Error())
 		return
 	}
-	_ = c.logger.Log("event", "handleCommandMessage", "ret", "success")
+	_ = c.logger.Log("level", "INFO", "event", "handleCommandMessage", "ret", "success")
 }
 
 func (c *Conn) handleCommandMessage() error {
 	for {
 		cs, err := c.ReadChunkStream() //read one chunk stream data fully
 		if err != nil {
+			_ = c.logger.Log("level", "ERROR", "event", "recv chunk stream", "error", err.Error())
 			return err
 		}
+		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "ret", "success")
 
 		c.handleControlMessage(cs) // save remote chunksize and window ack size
 		c.ack(cs.MsgLength)
@@ -182,7 +184,7 @@ func (c *Conn) ack(size uint32) {
 	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
 		cs := NewChunkStream().SetControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
-			_ = c.logger.Log("event", "send Ack", "error", err.Error())
+			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
 		}
 		c.ackSeqNumber = 0
 	}
@@ -196,9 +198,10 @@ func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
 	r := bytes.NewReader(cs.ChunkData)
 	vs, err := c.amfDecoder.DecodeBatch(r, amf.Version(amf.AMF0))
 	if err != nil && err != io.EOF {
+		_ = c.logger.Log("level", "ERROR", "event", "amf decode chunk body", "error", err.Error())
 		return err
 	}
-	_ = c.logger.Log("event", "recv request chunkstream", "rtmpChunkBody", fmt.Sprintf("%#v", vs))
+	_ = c.logger.Log("level", "INFO", "event", "amf decode chunk body", "data", fmt.Sprintf("%#v", vs))
 
 	if cmdStr, ok := vs[0].(string); ok {
 		switch cmdStr {
@@ -222,7 +225,9 @@ func (c *Conn) responseCommandMessage(cs *ChunkStream) error {
 		case cmdFCUnpublish, cmdDeleteStream:
 			//TODO:
 		default:
-			_ = c.logger.Log("error", fmt.Sprintf("unsupport command=%s", cmdStr))
+			err := fmt.Errorf("unsupport command=%s", cmdStr)
+			_ = c.logger.Log("level", "ERROR", "event", "parse AMF command", "error", err.Error())
+			return err
 		}
 	}
 
@@ -258,7 +263,7 @@ func (c *Conn) handleCmdConnectMessage(vs []interface{}) error {
 		}
 	}
 
-	_ = c.logger.Log("event", "parse connect command msg",
+	_ = c.logger.Log("level", "INFO", "event", "parse connect command msg",
 		"data", fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', tcUrl: '%s', objectEncoding: %d",
 			c.transactionID, c.app, c.flashVer, c.tcUrl, c.objectEncoding))
 
@@ -269,27 +274,27 @@ func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
 	// WindowAcknowledgement Size
 	respCs := NewChunkStream().SetControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
 	if err := c.writeChunStream(respCs); err != nil {
-		_ = c.logger.Log("event", "Set WindowAckSize Message", "error", err.Error())
+		_ = c.logger.Log("level", "ERROR", "event", "Set WindowAckSize Message", "error", err.Error())
 		return err
 	}
-	_ = c.logger.Log("event", "Send WindowAckSize Message", "ret", "success")
+	_ = c.logger.Log("level", "INFO", "event", "Send WindowAckSize Message", "ret", "success")
 
 	// Set Peer Bandwidth
 	respCs = NewChunkStream().SetControlMessage(MsgSetPeerBandwidth, 5, 2500000)
 	respCs.ChunkData[4] = 2
 	if err := c.writeChunStream(respCs); err != nil {
-		_ = c.logger.Log("event", "Set Peer Bandwidth", "error", err.Error())
+		_ = c.logger.Log("level", "ERROR", "event", "Set Peer Bandwidth", "error", err.Error())
 		return err
 	}
-	_ = c.logger.Log("event", "Set Peer Bandwidth", "ret", "success")
+	_ = c.logger.Log("level", "INFO", "event", "Set Peer Bandwidth", "ret", "success")
 
 	// set chunk size
 	respCs = NewChunkStream().SetControlMessage(MsgSetChunkSize, 4, c.localChunksize)
 	if err := c.writeChunStream(respCs); err != nil {
-		_ = c.logger.Log("event", "Set Chunk Size", "error", err.Error())
+		_ = c.logger.Log("level", "ERROR", "event", "Set Chunk Size", "error", err.Error())
 		return err
 	}
-	_ = c.logger.Log("event", "Set Chunk Size", "ret", "success")
+	_ = c.logger.Log("level", "INFO", "event", "Set Chunk Size", "ret", "success")
 
 	// NetConnection.Connect.Success
 	resp := make(amf.Object)
@@ -302,19 +307,20 @@ func (c *Conn) respCmdConnectMessage(cs *ChunkStream) error {
 	event["description"] = "Connection succeeded."
 	event["objectEncoding"] = c.objectEncoding
 	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, resp, event); err != nil {
-		_ = c.logger.Log("event", "NetConnection.Connect.Success", "error", err.Error())
+		_ = c.logger.Log("level", "ERROR", "event", "NetConnection.Connect.Success", "error", err.Error())
 		return err
 	}
-	_ = c.logger.Log("event", "NetConnection.Connect.Success", "ret", "success")
+	_ = c.logger.Log("level", "INFO", "event", "NetConnection.Connect.Success", "ret", "success")
 
 	return nil
 }
 
+// send MsgAMF0CommandMessage msg
 func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 	var bytesSend []byte
 	for _, v := range args {
 		if _, err := c.amfEncoder.Encode(bytes.NewBuffer(bytesSend), v, amf.AMF0); err != nil {
-			_ = c.logger.Log("event", "amf encode", "error", err.Error())
+			_ = c.logger.Log("level", "ERROR", "event", "amf encode", "error", err.Error())
 			return err
 		}
 	}
