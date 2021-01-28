@@ -31,12 +31,13 @@ type Conn struct {
 	transactionID int
 
 	// client connect info
-	app            string
+	appName        string
 	flashVer       string
 	swfUrl         string
 	tcUrl          string
 	objectEncoding int
 
+	streamName  string
 	isPublisher bool
 
 	handleCommandMessageDone bool
@@ -230,14 +231,18 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 			if err := c.respConnectCmdMessage(cs); err != nil {
 				return err
 			}
-		case cmdCreateStream:
+		case cmdReleaseStream: // "releaseStream"
+			_ = c.decodeReleaseStreamCmdMessage(vs[1:]) //do nothing
+		case cmdFcpublish: // "FCPublish"
+			_ = c.decodeFcPublishCmdMessage(vs[1:]) //do nothing
+		case cmdCreateStream: // "createStream"
 			if err := c.decodeCreateStreamCmdMessage(vs[1:]); err != nil {
 				return err
 			}
 			if err := c.respCreateStreamCmdMessage(cs); err != nil {
 				return err
 			}
-		case cmdPublish:
+		case cmdPublish: // "publish"
 			if err := c.decodePulishCmdMessage(vs[1:]); err != nil {
 				return err
 			}
@@ -259,10 +264,6 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 			c.handleCommandMessageDone = true
 			c.isPublisher = false
 			_ = c.logger.Log("level", "INFO", "event", "decode Play Msg", "ret", "success")
-		case cmdFcpublish:
-			_ = c.decodeFcPublishCmdMessage(vs[1:]) //do nothing
-		case cmdReleaseStream:
-			_ = c.decodeReleaseStreamCmdMessage(vs[1:]) //do nothing
 		case cmdFCUnpublish, cmdDeleteStream:
 		default:
 			err := fmt.Errorf("unsupport command=%s", cmdStr)
@@ -277,7 +278,8 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 	for _, v := range vs {
 		switch v.(type) {
-		case string, float64:
+		case string:
+		case float64:
 			id := int(v.(float64))
 			if id != 1 {
 				return fmt.Errorf("req error: %s", "id not 1 while connect")
@@ -286,7 +288,7 @@ func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 		case amf.Object:
 			objMap := v.(amf.Object)
 			if app, ok := objMap["app"]; ok {
-				c.app = app.(string)
+				c.appName = app.(string)
 			}
 
 			if flashVer, ok := objMap["flashVer"]; ok {
@@ -309,7 +311,7 @@ func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 
 	_ = c.logger.Log("level", "INFO", "event", "parse connect command msg",
 		"data", fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', swfUrl: '%s', tcUrl: '%s', objectEncoding: %d",
-			c.transactionID, c.app, c.flashVer, c.swfUrl, c.tcUrl, c.objectEncoding))
+			c.transactionID, c.appName, c.flashVer, c.swfUrl, c.tcUrl, c.objectEncoding))
 
 	return nil
 }
@@ -359,29 +361,37 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	return nil
 }
 
-func (c *Conn) decodeCreateStreamCmdMessage(vs interface{}) error {
-	//TODO:
+func (c *Conn) decodeCreateStreamCmdMessage(vs []interface{}) error {
+	for _, v := range vs {
+		switch v.(type) {
+		case string:
+		case float64:
+			c.transactionID = int(v.(float64))
+		case amf.Object:
+		}
+	}
 	return nil
 }
 
 func (c *Conn) respCreateStreamCmdMessage(cs *ChunkStream) error {
-	//TODO:
-	return nil
+	return c.writeMsg(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, nil, 1 /*streamID*/)
 }
 
-func (c *Conn) decodePulishCmdMessage(vs interface{}) error {
-	//TODO:
-	return nil
+func (c *Conn) decodePulishCmdMessage(vs []interface{}) error {
+	return c.publishOrPlay(vs)
 }
 
 func (c *Conn) respPulishCmdMessage(cs *ChunkStream) error {
-	//TODO:
-	return nil
+	event := make(amf.Object)
+	event["level"] = "status"
+	event["code"] = "NetStream.Publish.Start"
+	event["description"] = "Start publising."
+
+	return c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event)
 }
 
-func (c *Conn) decodePlayCmdMessage(vs interface{}) error {
-	//TODO:
-	return nil
+func (c *Conn) decodePlayCmdMessage(vs []interface{}) error {
+	return c.publishOrPlay(vs)
 }
 
 func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
@@ -395,7 +405,6 @@ func (c *Conn) decodeFcPublishCmdMessage(vs interface{}) error {
 
 /*
 func (c *Conn) respFcPublishCmdMessage(cs *ChunkStream) error {
-	//TODO:
 	return nil
 }
 */
@@ -406,10 +415,27 @@ func (c *Conn) decodeReleaseStreamCmdMessage(vs interface{}) error {
 
 /*
 func (c *Conn) respReleaseStreamCmdMessage(cs *ChunkStream) error {
-	//TODO:
 	return nil
 }
 */
+
+func (c *Conn) publishOrPlay(vs []interface{}) error {
+	for k, v := range vs {
+		switch v.(type) {
+		case string:
+			if k == 2 {
+				c.streamName = v.(string)
+			} else if k == 3 {
+				c.appName = v.(string)
+			}
+		case float64:
+			c.transactionID = int(v.(float64))
+		case amf.Object:
+		}
+	}
+
+	return nil
+}
 
 // send MsgAMF0CommandMessage msg
 func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
