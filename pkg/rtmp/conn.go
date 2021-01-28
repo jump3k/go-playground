@@ -133,7 +133,7 @@ func (c *Conn) Serve() {
 		return
 	}
 	_ = c.logger.Log("level", "INFO", "event", "discover tcUrl", "data",
-		fmt.Sprintf("domain: %s, app: %s, stream: %s, args: %s", c.domain, c.appName, c.streamName, c.args))
+		fmt.Sprintf("domain: '%s', app: '%s', stream: '%s', args: '%s'", c.domain, c.appName, c.streamName, c.args))
 }
 
 func (c *Conn) Handshake() error {
