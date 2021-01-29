@@ -32,7 +32,7 @@ all: build
 # build
 
 .PHONY: build
-build: build_srs_hook build_rpc_server build_rpc_client build_stringsvc3
+build: build_srs_hook build_rpc_server build_rpc_client build_stringsvc3 build_rtmpSvc
 
 
 # build srs_hook
@@ -66,6 +66,13 @@ build_stringsvc3: $(BINDIR)/stringsvc3
 $(BINDIR)/stringsvc3: $(SRC)
 	GO111MODULE=on go build $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LDFLAGS)' -o $@ ./cmd/kit/stringsvc3
 
+
+# build rtmpSvc
+.PHONY: build_rtmpSvc
+build_rtmpSvc: $(BINDIR)/rtmpSvc
+
+$(BINDIR)/rtmpSvc: $(SRC)
+	GO111MODULE=on go build $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LDFLAGS)' -o $@ ./cmd/rtmpserver
 
 
 # ---------------------------------------------------------------

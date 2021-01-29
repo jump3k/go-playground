@@ -30,11 +30,12 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 func (p *publisher) publishingCycle() {
 	// start to recv av data
 	for {
-		bs := make([]byte, 4096)
-		if _, err := p.rtmpConn.Read(bs); err != nil {
-			_ = p.logger.Log("level", "ERROR", "event", "recv publishing data", "error", err.Error())
+		cs, err := p.rtmpConn.readChunkStream()
+		if err != nil {
+			_ = p.logger.Log("level", "ERROR", "event", "recv av stream", "error", err.Error())
 			break
 		}
+		_ = p.logger.Log("level", "ERROR", "event", "recv av chunk stream", "data", fmt.Sprintf("%#v", cs))
 	}
 }
 

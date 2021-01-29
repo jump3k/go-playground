@@ -76,9 +76,23 @@ func (c *Conn) readChunkStream() (*ChunkStream, error) {
 		//c.chunks[csid] = cs
 
 		if cs.gotFull {
-			c.ack(cs.MsgLength)
+			c.onReadChunkStreamSucc(cs)
 			return cs, nil
 		}
+	}
+}
+
+func (c *Conn) onReadChunkStreamSucc(cs *ChunkStream) {
+	c.ack(cs.MsgLength)
+
+	switch cs.MsgTypeID {
+	case MsgSetChunkSize:
+		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
+		_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
+	case MsgWindowAcknowledgementSize:
+		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
+		_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
+	default:
 	}
 }
 

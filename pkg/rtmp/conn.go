@@ -2,7 +2,6 @@ package rtmp
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -68,8 +67,10 @@ type Conn struct {
 	buffering bool
 	sendBuf   []byte // a buffer of records waiting to be sent
 
-	bytesSent      uint32
-	bytesSentReset uint32
+	bytesSent uint32
+	//bytesSentReset uint32
+	bytesRecv      uint32
+	bytesRecvReset uint32
 	//packetSent int64
 }
 
@@ -189,12 +190,6 @@ func (c *Conn) handleCommandMessage() error {
 		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "data", fmt.Sprintf("%#v", cs))
 
 		switch cs.MsgTypeID {
-		case MsgSetChunkSize:
-			c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
-			_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
-		case MsgWindowAcknowledgementSize:
-			c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
-			_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
 		case MsgAMF0CommandMessage, MsgAMF3CommandMessage:
 			if err := c.decodeCommandMessage(cs); err != nil {
 				return err
@@ -249,10 +244,10 @@ func (c *Conn) handleControlMessage(cs *ChunkStream) {
 */
 
 func (c *Conn) ack(size uint32) {
-	c.bytesSent += size
-	if c.bytesSent >= 1<<32-1 {
-		c.bytesSent = 0
-		c.bytesSentReset++
+	c.bytesRecv += size
+	if c.bytesRecv >= 1<<32-1 {
+		c.bytesRecv = 0
+		c.bytesRecvReset++
 	}
 
 	c.ackSeqNumber += size
@@ -260,8 +255,9 @@ func (c *Conn) ack(size uint32) {
 		cs := newChunkStream().asControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
+		} else {
+			_ = c.logger.Log("level", "INFO", "event", "send Ack", "ret", "success")
 		}
-		_ = c.logger.Log("level", "INFO", "event", "send Ack", "ret", "success")
 
 		c.ackSeqNumber = 0
 	}
