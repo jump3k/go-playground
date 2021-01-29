@@ -11,9 +11,10 @@ import (
 )
 
 // Server returns a new RTMP server side conncetion
-func Server(conn net.Conn, config *Config) *Conn {
+func Server(conn net.Conn, pubMgr *publisherMgr, config *Config) *Conn {
 	c := &Conn{
 		conn:   conn,
+		pubMgr: pubMgr,
 		config: config,
 	}
 	c.handshakeFn = c.serverHandshake
@@ -47,6 +48,7 @@ func Client(conn net.Conn, config *Config) *Conn {
 type listener struct {
 	net.Listener
 	config *Config
+	pubMgr *publisherMgr // publisherMgr for every listener/server instance
 }
 
 func (l *listener) Accept() (net.Conn, error) {
@@ -55,12 +57,13 @@ func (l *listener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return Server(c, l.config), nil
+	return Server(c, l.pubMgr, l.config), nil
 }
 
 func NewListener(inner net.Listener, config *Config) net.Listener {
 	l := new(listener)
 	l.Listener = inner
+	l.pubMgr = newPublisherMgr()
 	l.config = config
 	return l
 }

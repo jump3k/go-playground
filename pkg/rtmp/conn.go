@@ -26,6 +26,7 @@ type Conn struct {
 	conn        net.Conn
 	isClient    bool
 	handshakeFn func() error // (*Conn).clientHandshake or serverHandshake
+	pubMgr      *publisherMgr
 
 	config *Config
 	logger log.Logger
@@ -46,6 +47,7 @@ type Conn struct {
 	streamName  string
 	domain      string
 	args        string
+	streamKey   string
 	isPublisher bool
 
 	handleCommandMessageDone bool
@@ -134,6 +136,21 @@ func (c *Conn) Serve() {
 	}
 	_ = c.logger.Log("level", "INFO", "event", "discover tcUrl", "data",
 		fmt.Sprintf("domain: '%s', app: '%s', stream: '%s', args: '%s'", c.domain, c.appName, c.streamName, c.args))
+	c.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
+
+	if c.isPublisher { // publish
+		pub, loaded := c.pubMgr.storePublisher(c.streamKey, newPublisher(c, c.streamKey))
+		if loaded { // stream already exists
+			_ = c.logger.Log("level", "ERROR", "event", "try add publisher", "error", "stream already exists")
+			return
+		}
+
+		defer pub.close()
+		pub.publishingCycle()
+	} else { //play
+		//TODO: support play
+		_ = newSubscriber(c)
+	}
 }
 
 func (c *Conn) Handshake() error {
@@ -170,9 +187,6 @@ func (c *Conn) handleCommandMessage() error {
 			return err
 		}
 		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "data", fmt.Sprintf("%#v", cs))
-
-		//c.handleControlMessage(cs) // save remote chunksize and window ack size
-		c.ack(cs.MsgLength)
 
 		switch cs.MsgTypeID {
 		case MsgSetChunkSize:
@@ -321,33 +335,32 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 
 func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 	for _, v := range vs {
-		switch v.(type) {
+		switch v := v.(type) {
 		case string:
 		case float64:
-			id := int(v.(float64))
+			id := int(v)
 			if id != 1 {
 				return fmt.Errorf("req error: %s", "id not 1 while connect")
 			}
 			c.transactionID = id
 		case amf.Object:
-			objMap := v.(amf.Object)
-			if app, ok := objMap["app"]; ok {
+			if app, ok := v["app"]; ok {
 				c.appName = app.(string)
 			}
 
-			if flashVer, ok := objMap["flashVer"]; ok {
+			if flashVer, ok := v["flashVer"]; ok {
 				c.flashVer = flashVer.(string)
 			}
 
-			if swfUrl, ok := objMap["swfUrl"]; ok {
+			if swfUrl, ok := v["swfUrl"]; ok {
 				c.swfUrl = swfUrl.(string)
 			}
 
-			if tcUrl, ok := objMap["tcUrl"]; ok {
+			if tcUrl, ok := v["tcUrl"]; ok {
 				c.tcUrl = tcUrl.(string)
 			}
 
-			if encoding, ok := objMap["objectEncoding"]; ok {
+			if encoding, ok := v["objectEncoding"]; ok {
 				c.objectEncoding = int(encoding.(float64))
 			}
 		}
@@ -407,10 +420,10 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 
 func (c *Conn) decodeCreateStreamCmdMessage(vs []interface{}) error {
 	for _, v := range vs {
-		switch v.(type) {
+		switch v := v.(type) {
 		case string:
 		case float64:
-			c.transactionID = int(v.(float64))
+			c.transactionID = int(v)
 		case amf.Object:
 		}
 	}
@@ -465,17 +478,17 @@ func (c *Conn) respReleaseStreamCmdMessage(cs *ChunkStream) error {
 
 func (c *Conn) publishOrPlay(vs []interface{}) error {
 	for k, v := range vs {
-		switch v.(type) {
+		switch v := v.(type) {
 		case string:
 			if k == 2 {
-				c.streamName = v.(string)
+				c.streamName = v
 			} else if k == 3 {
 				if c.appName == "" {
-					c.appName = v.(string) //has assigned very likely while decode connect command message
+					c.appName = v //has assigned very likely while decode connect command message
 				}
 			}
 		case float64:
-			c.transactionID = int(v.(float64))
+			c.transactionID = int(v)
 		case amf.Object:
 		}
 	}

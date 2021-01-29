@@ -76,6 +76,7 @@ func (c *Conn) readChunkStream() (*ChunkStream, error) {
 		//c.chunks[csid] = cs
 
 		if cs.gotFull {
+			c.ack(cs.MsgLength)
 			return cs, nil
 		}
 	}
