@@ -89,7 +89,9 @@ func ListenAndServe(network, laddr string, config *Config) error {
 		return err
 	}
 
-	_ = config.logger.Log("event", "rtmp listen", "addr", fmt.Sprintf("%s[%s]", l.Addr().String(), l.Addr().Network()))
+	_ = config.logger.Log("event", "rtmp listen",
+		"addr", fmt.Sprintf("%s[%s]", l.Addr().String(), l.Addr().Network()),
+		"pid", os.Getpid())
 
 	for {
 		conn, err := l.Accept()

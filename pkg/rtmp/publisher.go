@@ -35,7 +35,13 @@ func (p *publisher) publishingCycle() {
 			_ = p.logger.Log("level", "ERROR", "event", "recv av stream", "error", err.Error())
 			break
 		}
-		_ = p.logger.Log("level", "ERROR", "event", "recv av chunk stream", "data", fmt.Sprintf("%#v", cs))
+		//_ = p.logger.Log("level", "ERROR", "event", "recv av chunk stream", "data", fmt.Sprintf("%#v", cs))
+
+		switch cs.MsgTypeID {
+		case MsgAudioMessage, MsgVideoMessage, MSGAMF0DataMessage, MsgAMF3DataMessage: //audio/video relational data
+			//TODO:demux av data
+		default:
+		}
 	}
 }
 
