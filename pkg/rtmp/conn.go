@@ -243,26 +243,6 @@ func (c *Conn) handleControlMessage(cs *ChunkStream) {
 }
 */
 
-func (c *Conn) ack(size uint32) {
-	c.bytesRecv += size
-	if c.bytesRecv >= 1<<32-1 {
-		c.bytesRecv = 0
-		c.bytesRecvReset++
-	}
-
-	c.ackSeqNumber += size
-	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
-		cs := newChunkStream().asControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
-		if err := c.writeChunStream(cs); err != nil {
-			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
-		} else {
-			_ = c.logger.Log("level", "INFO", "event", "send Ack", "ret", "success")
-		}
-
-		c.ackSeqNumber = 0
-	}
-}
-
 func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 	if cs.MsgTypeID == MsgAMF3CommandMessage {
 		cs.ChunkData = cs.ChunkData[1:]
