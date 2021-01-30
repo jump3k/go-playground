@@ -14,7 +14,7 @@ func (dm *Demuxer) Demux(pkt *av.Packet) (*av.Packet, error) {
 }
 
 func (dm *Demuxer) DemuxHdr(pkt *av.Packet) error {
-	var t *Tag
+	t := new(Tag)
 	_, err := t.decodeMediaTagHeader(pkt.Data, pkt.IsVideo)
 	if err != nil {
 		return err
