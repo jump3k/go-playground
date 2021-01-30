@@ -3,6 +3,8 @@ package rtmp
 import (
 	"encoding/binary"
 	"fmt"
+
+	"playground/pkg/av"
 )
 
 type ChunkBasicHeader struct {
@@ -48,6 +50,24 @@ func (cs *ChunkStream) asControlMessage(typeID RtmpMsgTypeID, length uint32, val
 	putU32BE(cs.ChunkData[:length], value)
 
 	return cs
+}
+
+func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
+	pkt := &av.Packet{}
+
+	switch cs.MsgTypeID {
+	case MsgAudioMessage:
+		pkt.IsAudio = true
+	case MsgVideoMessage:
+		pkt.IsVideo = true
+	case MSGAMF0DataMessage, MsgAMF3DataMessage:
+		pkt.IsMetaData = true
+	}
+
+	pkt.StreamID = cs.MsgStreamID
+	pkt.Data = cs.ChunkData
+
+	return pkt
 }
 
 //read one chunk stream fully
@@ -125,6 +145,7 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 
 	return nil
 }
+
 
 func (c *Conn) onReadChunkStreamSucc(cs *ChunkStream) {
 	switch cs.MsgTypeID {

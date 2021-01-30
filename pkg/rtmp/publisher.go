@@ -4,12 +4,16 @@ import (
 	"fmt"
 
 	"github.com/go-kit/kit/log"
+
+	"playground/pkg/flv"
 )
 
 type publisher struct {
 	rtmpConn  *Conn
 	SessionID string
 	streamKey string
+
+	demuxer *flv.Demuxer
 
 	pubMgr *publisherMgr
 	logger log.Logger
@@ -19,6 +23,7 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 	p := &publisher{
 		rtmpConn:  c,
 		streamKey: streamKey,
+		demuxer:   flv.NewDemuxer(),
 		pubMgr:    c.pubMgr,
 		logger:    c.logger,
 	}
@@ -40,6 +45,13 @@ func (p *publisher) publishingCycle() {
 		switch cs.MsgTypeID {
 		case MsgAudioMessage, MsgVideoMessage, MSGAMF0DataMessage, MsgAMF3DataMessage: //audio/video relational data
 			//TODO:demux av data
+			avPkt := cs.decodeAVChunkStream()
+			_ = p.logger.Log("level", "INFO", "event", "AVPKT", "a:", avPkt.IsAudio, "v:", avPkt.IsVideo, "meta:", avPkt.IsMetaData)
+
+			err := p.demuxer.DemuxHdr(avPkt)
+			if err != nil {
+				break
+			}
 		default:
 		}
 	}
