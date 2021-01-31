@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	"playground/pkg/av"
 )
 
@@ -72,8 +74,6 @@ func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 
 //read one chunk stream fully
 func (c *Conn) readChunkStream() (*ChunkStream, error) {
-	_ = c.logger.Log("level", "INFO", "event", "Attempt to read a full chunk stream")
-
 	for {
 		h, err := c.ReadUint(1, true)
 		if err != nil {
@@ -146,7 +146,6 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 	return nil
 }
 
-
 func (c *Conn) onReadChunkStreamSucc(cs *ChunkStream) {
 	switch cs.MsgTypeID {
 	case MsgSetChunkSize:
@@ -204,6 +203,7 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 
 	switch cs.tmpFormat {
 	case 0:
+		// message header need 11 bytes while fmt=0
 		cs.Fmt = 0
 		cs.TimeStamp, _ = c.ReadUint(3, true)
 		cs.MsgLength, _ = c.ReadUint(3, true)
@@ -213,11 +213,13 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 
 		cs.timeExtended = false
 		if cs.TimeStamp == 0xffffff {
+			// if extended timestamp, read 4 bytes
 			cs.TimeStamp, _ = c.ReadUint(4, true)
 			cs.timeExtended = true
 		}
 		setRemainFlag(cs)
 	case 1:
+		// message header need 7 bytes while fmt=1
 		cs.Fmt = 1
 		timeStamp, _ := c.ReadUint(3, true)
 		cs.MsgLength, _ = c.ReadUint(3, true)
@@ -226,6 +228,7 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 
 		cs.timeExtended = false
 		if timeStamp == 0xffffff {
+			// if extended timestamp, read 4 bytes
 			timeStamp, _ = c.ReadUint(4, true)
 			cs.timeExtended = true
 		}
@@ -234,11 +237,13 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 		cs.TimeStamp += timeStamp
 		setRemainFlag(cs)
 	case 2:
+		// message header need 3 bytes while fmt=2
 		cs.Fmt = 2
 		timeStamp, _ := c.ReadUint(3, true)
 
 		cs.timeExtended = false
 		if timeStamp == 0xffffff {
+			// if extended timestamp, read 4 bytes
 			timeStamp, _ = c.ReadUint(4, true)
 			cs.timeExtended = true
 		}
@@ -289,11 +294,11 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 	}
 
 	buf := cs.ChunkData[cs.index : cs.index+size]
-	if n, err := c.Read(buf); err != nil {
-		return err
+	if nr, err := c.Read(buf); err != nil || nr != int(size) {
+		return errors.Wrapf(err, "read %d bytes, autual: %d", size, nr)
 	} else {
-		cs.index += uint32(n)
-		cs.remain -= uint32(n)
+		cs.index += uint32(nr)
+		cs.remain -= uint32(nr)
 
 		if cs.remain == 0 {
 			cs.gotFull = true
