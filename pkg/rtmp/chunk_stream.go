@@ -138,7 +138,11 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 		totalLen += inc
 
 		buf := cs.ChunkData[start : start+inc]
-		if _, err := c.Write(buf); err != nil { //write rtmp chunk body
+		if _, err := c.readWriter.Write(buf); err != nil { //write rtmp chunk body
+			return err
+		}
+
+		if err := c.readWriter.Flush(); err != nil {
 			return err
 		}
 	}
@@ -268,19 +272,14 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 			setRemainFlag(cs)
 		} else {
 			if cs.timeExtended {
-				b := make([]byte, 4)
-				if _, err := c.Read(b); err != nil { //peek
+				b, err := c.readWriter.Peek(4)
+				if err != nil {
 					return err
 				}
 
 				tmpTimeStamp := binary.BigEndian.Uint32(b)
 				if tmpTimeStamp == cs.TimeStamp {
-					// discard 4 bytes
-				} else {
-					//TODO: if peek, delete the next three lines
-					copy(cs.ChunkData[cs.index:cs.index+4], b)
-					cs.index += 4
-					cs.remain -= 4
+					_, _ = c.readWriter.Discard(4)
 				}
 			}
 		}
@@ -294,7 +293,7 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 	}
 
 	buf := cs.ChunkData[cs.index : cs.index+size]
-	if nr, err := c.Read(buf); err != nil || nr != int(size) {
+	if nr, err := c.readWriter.Read(buf); err != nil || nr != int(size) {
 		return errors.Wrapf(err, "read %d bytes, autual: %d", size, nr)
 	} else {
 		cs.index += uint32(nr)
@@ -363,7 +362,7 @@ func (c *Conn) ReadUint(n int, bigEndian bool) (uint32, error) {
 	ret := uint32(0)
 
 	bytes := make([]byte, n)
-	if nr, err := c.Read(bytes); err != nil {
+	if nr, err := c.readWriter.Read(bytes); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte, actual: %d", n, nr), "error", err.Error())
 		return 0, err
 	}
@@ -391,7 +390,7 @@ func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
 		}
 	}
 
-	if nw, err := c.Write(buf); err != nil {
+	if nw, err := c.readWriter.Write(buf); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("write %d byte, actual: %d", nbytes, nw), "error", err.Error())
 		return err
 	}

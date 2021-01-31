@@ -27,8 +27,9 @@ type Conn struct {
 	handshakeFn func() error // (*Conn).clientHandshake or serverHandshake
 	pubMgr      *publisherMgr
 
-	config *Config
-	logger log.Logger
+	readWriter *readWriter
+	config     *Config
+	logger     log.Logger
 
 	handshakeMutex  sync.Mutex
 	HandshakeStatus uint32
@@ -115,9 +116,11 @@ func (c *Conn) Serve() {
 		"remote", c.RemoteAddr().String()+" ("+c.RemoteAddr().Network()+")",
 	)
 
-	if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
-		_ = c.logger.Log("level", "ERROR", "event", "failed to set deadline")
-	}
+	/*
+		if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
+			_ = c.logger.Log("level", "ERROR", "event", "failed to set deadline")
+		}
+	*/
 
 	if err := c.Handshake(); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "serverHandshake", "error", err.Error())

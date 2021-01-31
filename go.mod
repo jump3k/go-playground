@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.1.4
 	github.com/gwuhaolin/livego v0.0.0-20210119152854-12948dfb6782
 	github.com/nats-io/nats.go v1.9.1
+	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.3.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.7.0

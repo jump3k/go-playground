@@ -32,7 +32,7 @@ func (c *Conn) serverHandshake() error {
 	_ = c.logger.Log("level", "INFO", "event", "start to server handshake")
 
 	// read c0c1
-	if _, err := io.ReadFull(c, c0c1); err != nil {
+	if _, err := io.ReadFull(c.readWriter, c0c1); err != nil {
 		return err
 	}
 	_ = c.logger.Log("level", "INFO", "event", "read c0c1", "ret", "success")
@@ -61,7 +61,11 @@ func (c *Conn) serverHandshake() error {
 	}
 
 	// write s0s1s2
-	if _, err := c.Write(s0s1s2); err != nil {
+	if _, err := c.readWriter.Write(s0s1s2); err != nil {
+		return err
+	}
+
+	if err := c.readWriter.Flush(); err != nil {
 		return err
 	}
 	_ = c.logger.Log("level", "INFO", "event", "write s0s1")

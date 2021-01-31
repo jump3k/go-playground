@@ -2,11 +2,14 @@ package rtmp
 
 import (
 	"github.com/go-kit/kit/log"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 type Config struct {
 	logger log.Logger
+
+	connReadBufSize  int
+	connWriteBufSize int
 }
 
 type ConnectionState struct {

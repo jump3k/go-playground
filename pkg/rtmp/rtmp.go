@@ -25,6 +25,18 @@ func Server(conn net.Conn, pubMgr *publisherMgr, config *Config) *Conn {
 	c.localWindowAckSize = 2500000
 	c.remoteWindowAckSize = 250000
 
+	connReadBufSize := config.connReadBufSize
+	if connReadBufSize <= 0 {
+		connReadBufSize = 4096
+	}
+
+	connWriteBufSize := config.connWriteBufSize
+	if connWriteBufSize <= 0 {
+		connWriteBufSize = 4096
+	}
+
+	c.readWriter = newReadWriter(c, connReadBufSize, connWriteBufSize)
+
 	c.chunks = make(map[uint32]*ChunkStream)
 	c.amfDecoder = &amf.Decoder{}
 	c.amfEncoder = &amf.Encoder{}
