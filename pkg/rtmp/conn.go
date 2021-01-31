@@ -2,7 +2,6 @@ package rtmp
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/gwuhaolin/livego/protocol/amf"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -25,7 +25,8 @@ type Conn struct {
 	conn        net.Conn
 	isClient    bool
 	handshakeFn func() error // (*Conn).clientHandshake or serverHandshake
-	pubMgr      *publisherMgr
+	ssMgr       *streamSourceMgr
+	//pubMgr      *publisherMgr
 
 	readWriter *readWriter
 	config     *Config
@@ -143,17 +144,45 @@ func (c *Conn) Serve() {
 	c.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
 
 	if c.isPublisher { // publish
-		pub, loaded := c.pubMgr.storePublisher(c.streamKey, newPublisher(c, c.streamKey))
-		if loaded { // stream already exists
-			_ = c.logger.Log("level", "ERROR", "event", "try add publisher", "error", "stream already exists")
-			return
+		var pub *publisher
+
+		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
+		if !ok {
+			pub = newPublisher(c, c.streamKey)
+			ss := newStreamSource(pub)
+			c.ssMgr.streamMap.Store(c.streamKey, ss)
+		} else {
+			ss := val.(*streamSource)
+			if ss.pub == nil {
+				ss.setPublisher(newPublisher(c, c.streamKey))
+				c.ssMgr.streamMap.Store(c.streamKey, ss)
+			}
 		}
 
 		defer pub.close()
 		pub.publishingCycle()
 	} else { //play
-		//TODO: support play
-		_ = newSubscriber(c)
+		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
+		if !ok {
+			_ = c.logger.Log("level", "ERROR", "event", "play", "error", "stream not exists")
+			return
+		}
+
+		sub := newSubscriber(c)
+		ss := val.(*streamSource)
+		if !ss.addSubscriber(sub) {
+			_ = c.logger.Log("level", "ERROR", "event", "play", "error", "already subscribe")
+			return
+		}
+
+		select {
+		case <-ss.publishing: // publisher stop publishing
+			ss.delSubscriber(sub)
+			return
+		case <-sub.stopSub: // subscriber stop play
+			ss.delSubscriber(sub)
+			return
+		}
 	}
 }
 
@@ -431,7 +460,57 @@ func (c *Conn) decodePlayCmdMessage(vs []interface{}) error {
 }
 
 func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
-	//TODO:
+	// set recorded
+	cs1 := NewUserControlMessage(streamIsRecorded, 4)
+	for i := 0; i < 4; i++ {
+		cs1.ChunkData[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
+	}
+	if err := c.writeChunStream(cs1); err != nil {
+		return errors.Wrap(err, "send user control message streamIsRecorded")
+	}
+
+	// set begin
+	cs2 := NewUserControlMessage(streamBegin, 4)
+	for i := 0; i < 4; i++ {
+		cs2.ChunkData[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
+	}
+	if err := c.writeChunStream(cs2); err != nil {
+		return errors.Wrap(err, "send user control message streamBegin")
+	}
+
+	// NetStream.Play.Resetstream
+	event := make(amf.Object)
+	event["level"] = "status"
+	event["code"] = "NetStream.Play.Reset"
+	event["description"] = "Playing and resetting stream."
+	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+		return errors.Wrap(err, "send NetStream.Play.Reset message")
+	}
+
+	// NetStream.Play.Start
+	event["level"] = "status"
+	event["code"] = "NetStream.Play.Start"
+	event["description"] = "Started playing stream."
+	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+		return errors.Wrap(err, "send NetStream.Play.Start message")
+	}
+
+	// NetStream.Data.Start
+	event["level"] = "status"
+	event["code"] = "NetStream.Data.Start"
+	event["description"] = "Started playing stream."
+	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+		return errors.Wrap(err, "send NetStream.Data.Start message")
+	}
+
+	// NetStream.Play.PublishNotify
+	event["level"] = "status"
+	event["code"] = "NetStream.Play.PublishNotify"
+	event["description"] = "Started playing notify."
+	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+		return errors.Wrap(err, "send NetStream.Play.PublishNotify message")
+	}
+
 	return nil
 }
 

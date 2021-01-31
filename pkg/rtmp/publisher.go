@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-kit/kit/log"
 
@@ -15,7 +16,7 @@ type publisher struct {
 
 	demuxer *flv.Demuxer
 
-	pubMgr *publisherMgr
+	ssMgr  *streamSourceMgr
 	logger log.Logger
 }
 
@@ -24,7 +25,7 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 		rtmpConn:  c,
 		streamKey: streamKey,
 		demuxer:   flv.NewDemuxer(),
-		pubMgr:    c.pubMgr,
+		ssMgr:     c.ssMgr,
 		logger:    c.logger,
 	}
 
@@ -52,12 +53,39 @@ func (p *publisher) publishingCycle() {
 			if err != nil {
 				break
 			}
+
+			val, ok := p.rtmpConn.ssMgr.streamMap.Load(p.streamKey)
+			if !ok {
+				_ = p.logger.Log("level", "FATAL", "event", "publishingCycle", "error", "streamSource not found while publishing")
+				break
+			}
+
+			subs := val.(*streamSource).subs
+			for _, sub := range subs {
+				_ = sub
+				//TODO: send data to subscriber
+			}
 		default:
 		}
 	}
 }
 
 func (p *publisher) close() {
-	p.pubMgr.deletePublisher(p.streamKey)
-	_ = p.logger.Log("level", "INFO", "event", fmt.Sprintf("delete %s from streamMgr", p.streamKey))
+	//p.pubMgr.deletePublisher(p.streamKey)
+	val, ok := p.ssMgr.streamMap.Load(p.streamKey)
+	if ok {
+		ss := val.(*streamSource)
+		ss.pub = nil
+	}
+
+	time.AfterFunc(time.Minute, func() { // check after 1min
+		val, ok := p.ssMgr.streamMap.Load(p.streamKey)
+		if ok {
+			ss := val.(*streamSource)
+			if ss.pub == nil {
+				p.ssMgr.streamMap.Delete(p.streamKey) //delete actual
+				_ = p.logger.Log("level", "INFO", "event", fmt.Sprintf("delete %s from streamMgr", p.streamKey))
+			}
+		}
+	})
 }

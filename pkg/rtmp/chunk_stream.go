@@ -54,6 +54,30 @@ func (cs *ChunkStream) asControlMessage(typeID RtmpMsgTypeID, length uint32, val
 	return cs
 }
 
+func NewUserControlMessage(eventType, buflen uint32) *ChunkStream {
+	buflen += 2
+
+	cs := &ChunkStream{
+		ChunkHeader: ChunkHeader{
+			ChunkBasicHeader: ChunkBasicHeader{
+				Fmt:  0,
+				Csid: 2,
+			},
+			ChunkMessageHeader: ChunkMessageHeader{
+				MsgTypeID:   MsgUserControlMessage,
+				MsgStreamID: 1,
+				MsgLength:   buflen,
+			},
+		},
+		ChunkData: make([]byte, buflen),
+	}
+
+	cs.ChunkData[0] = byte(eventType >> 8 & 0xff)
+	cs.ChunkData[1] = byte(eventType & 0xff)
+
+	return cs
+}
+
 func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 	pkt := &av.Packet{}
 
@@ -427,4 +451,14 @@ const (
 	cmdFCUnpublish   = "FCUnpublish"
 	cmdDeleteStream  = "deleteStream"
 	cmdPlay          = "play"
+)
+
+const (
+	streamBegin      uint32 = 0
+	//streamEOF        uint32 = 1
+	//streamDry        uint32 = 2
+	//setBufferLen     uint32 = 3
+	streamIsRecorded uint32 = 4
+	//pingRequest      uint32 = 6
+	//pingResponse     uint32 = 7
 )

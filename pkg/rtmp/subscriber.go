@@ -8,6 +8,7 @@ type subscriber struct {
 	rtmpConn  *Conn
 	streamKey string
 
+	stopSub <-chan bool
 	subType string // "gerneral"
 	logger  log.Logger
 }
@@ -17,6 +18,7 @@ func newSubscriber(c *Conn) *subscriber {
 		rtmpConn: c,
 		subType:  "gerneral",
 		logger:   c.logger,
+		stopSub:  make(<-chan bool, 1),
 	}
 
 	sub.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
