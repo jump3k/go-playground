@@ -176,8 +176,6 @@ func (c *Conn) ack(size uint32) {
 		cs := newChunkStream().asControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
-		} else {
-			_ = c.logger.Log("level", "INFO", "event", "send Ack", "ret", "success")
 		}
 
 		c.ackSeqNumber = 0

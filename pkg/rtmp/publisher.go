@@ -46,7 +46,7 @@ func (p *publisher) publishingCycle() {
 		case MsgAudioMessage, MsgVideoMessage, MSGAMF0DataMessage, MsgAMF3DataMessage: //audio/video relational data
 			//TODO:demux av data
 			avPkt := cs.decodeAVChunkStream()
-			_ = p.logger.Log("level", "INFO", "event", "AVPKT", "a:", avPkt.IsAudio, "v:", avPkt.IsVideo, "meta:", avPkt.IsMetaData)
+			//_ = p.logger.Log("level", "INFO", "event", "AVPKT", "a:", avPkt.IsAudio, "v:", avPkt.IsVideo, "meta:", avPkt.IsMetaData)
 
 			err := p.demuxer.DemuxHdr(avPkt)
 			if err != nil {
