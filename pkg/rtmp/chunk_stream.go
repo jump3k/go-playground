@@ -29,13 +29,14 @@ type ChunkHeader struct {
 
 type ChunkStream struct {
 	ChunkHeader
-	ChunkData []byte
+	ChunkBody []byte
 
 	tmpFormat    uint8
+	msgHdrSize   int
 	timeExtended bool
-	gotFull      bool
-	index        uint32
-	remain       uint32
+	gotBodyFull  bool
+	bodyIndex    uint32
+	bodyRemain   uint32
 }
 
 func newChunkStream() *ChunkStream {
@@ -48,8 +49,8 @@ func (cs *ChunkStream) asControlMessage(typeID RtmpMsgTypeID, length uint32, val
 	cs.MsgTypeID = typeID
 	cs.MsgStreamID = 0
 	cs.MsgLength = length
-	cs.ChunkData = make([]byte, length)
-	putU32BE(cs.ChunkData[:length], value)
+	cs.ChunkBody = make([]byte, length)
+	putU32BE(cs.ChunkBody[:length], value)
 
 	return cs
 }
@@ -69,11 +70,11 @@ func NewUserControlMessage(eventType, buflen uint32) *ChunkStream {
 				MsgLength:   buflen,
 			},
 		},
-		ChunkData: make([]byte, buflen),
+		ChunkBody: make([]byte, buflen),
 	}
 
-	cs.ChunkData[0] = byte(eventType >> 8 & 0xff)
-	cs.ChunkData[1] = byte(eventType & 0xff)
+	cs.ChunkBody[0] = byte(eventType >> 8 & 0xff)
+	cs.ChunkBody[1] = byte(eventType & 0xff)
 
 	return cs
 }
@@ -91,7 +92,7 @@ func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 	}
 
 	pkt.StreamID = cs.MsgStreamID
-	pkt.Data = cs.ChunkData
+	pkt.Data = cs.ChunkBody
 
 	return pkt
 }
@@ -99,31 +100,202 @@ func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 //read one chunk stream fully
 func (c *Conn) readChunkStream() (*ChunkStream, error) {
 	for {
-		h, err := c.ReadUint(1, true)
+		basicHdr, err := c.readChunkBasicHeader()
 		if err != nil {
 			return nil, err
 		}
 
-		fmt := h >> 6
-		csid := h & 0x3f
-		cs, ok := c.chunks[csid]
+		cs, ok := c.chunks[basicHdr.Csid]
 		if !ok {
 			cs = newChunkStream()
-			c.chunks[csid] = cs
+			cs.ChunkHeader.ChunkBasicHeader = *basicHdr
+			c.chunks[cs.Csid] = cs
 		}
 
-		cs.tmpFormat = uint8(fmt)
-		cs.ChunkBasicHeader.Csid = csid
-		if err := c.readChunk(cs); err != nil {
+		if err := c.readChunkMessageHeader(cs, basicHdr.Fmt); err != nil {
 			return nil, err
 		}
-		//c.chunks[csid] = cs
 
-		if cs.gotFull {
+		if err := c.readChunkMessageBody(cs); err != nil {
+			return nil, err
+		}
+
+		if cs.gotBodyFull {
 			c.onReadChunkStreamSucc(cs)
 			return cs, nil
 		}
+
+		/*
+			h, err := c.ReadUint(1, true)
+			if err != nil {
+				return nil, err
+			}
+
+			fmt := h >> 6
+			csid := h & 0x3f
+			cs, ok := c.chunks[csid]
+			if !ok {
+				cs = newChunkStream()
+				c.chunks[csid] = cs
+			}
+
+			cs.tmpFormat = uint8(fmt)
+			cs.ChunkBasicHeader.Csid = csid
+			if err := c.readChunk(cs); err != nil {
+				return nil, err
+			}
+			//c.chunks[csid] = cs
+
+			if cs.gotBodyFull {
+				c.onReadChunkStreamSucc(cs)
+				return cs, nil
+			}
+		*/
 	}
+}
+
+func (c *Conn) readChunkBasicHeader() (*ChunkBasicHeader, error) {
+	h, err := c.ReadUint(1, true)
+	if err != nil {
+		return nil, errors.Wrap(err, "basic header requires 1 bytes")
+	}
+
+	fmt := uint8(h >> 6)
+	csid := h & 0x3f
+
+	switch csid {
+	case 0: // 64-319, 2Bytes chunk basic header
+		id, err := c.ReadUint(1, false)
+		if err != nil {
+			return nil, errors.Wrap(err, "basic header requires 2 bytes")
+		}
+		csid = id + 64
+	case 1: // 64-65599, 3Bytes chunk basic header
+		id, err := c.ReadUint(2, false)
+		if err != nil {
+			return nil, errors.Wrap(err, "basic header requires 3 bytes")
+		}
+		csid = id + 64
+	default: // 2-63, 1Byte chunk basic header
+		// csid > 1
+	}
+
+	return &ChunkBasicHeader{Fmt: fmt, Csid: csid}, nil
+}
+
+func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
+	switch fmt {
+	case 0:
+		cs.msgHdrSize = 11
+	case 1:
+		cs.msgHdrSize = 7
+	case 2:
+		cs.msgHdrSize = 3
+	case 3:
+		cs.msgHdrSize = 0
+	}
+
+	var buf []byte
+	if cs.msgHdrSize > 0 {
+		buf = make([]byte, cs.msgHdrSize)
+		if nr, err := c.readWriter.Read(buf); err != nil || nr != cs.msgHdrSize {
+			return errors.Wrapf(err, "read %d bytes message header", cs.msgHdrSize)
+		}
+	}
+
+	/*
+	 * parse the message header.
+	 *   3bytes: timestamp delta,    fmt=0,1,2
+	 *   3bytes: payload length,     fmt=0,1
+	 *   1bytes: message type,       fmt=0,1
+	 *   4bytes: stream id,          fmt=0
+	 */
+	if fmt <= 2 {
+		cs.ExtendedTimeStamp = byteSliceAsUint(buf[0:3], true) // timestamp (delta)
+		cs.timeExtended = cs.ExtendedTimeStamp >= 0xffffff
+
+		if !cs.timeExtended {
+			switch cs.Fmt {
+			case 0:
+				cs.TimeStamp = cs.ExtendedTimeStamp
+			case 1, 2:
+				cs.TimeStamp += cs.ExtendedTimeStamp
+			}
+		}
+
+		if fmt <= 1 {
+			payloadLength := byteSliceAsUint(buf[3:6], true) // payload length
+			cs.MsgLength = payloadLength
+
+			msgTypeID := byteSliceAsUint(buf[6:7], true) // message type
+			cs.MsgTypeID = RtmpMsgTypeID(msgTypeID)
+
+			if fmt == 0 {
+				msgStreamID := byteSliceAsUint(buf[7:11], false) // stream id
+				cs.MsgStreamID = msgStreamID
+			}
+		}
+
+		cs.gotBodyFull = false
+		cs.bodyIndex = 0
+		cs.bodyRemain = cs.MsgLength
+		cs.ChunkBody = make([]byte, int(cs.MsgLength))
+	} else {
+		if cs.bodyRemain == 0 {
+			switch cs.Fmt {
+			case 0:
+				if cs.timeExtended {
+					cs.TimeStamp, _ = c.ReadUint(4, true)
+				}
+			case 1, 2:
+				timedelta := cs.ExtendedTimeStamp
+				if cs.timeExtended {
+					timedelta, _ = c.ReadUint(4, true)
+				}
+				cs.TimeStamp += timedelta
+			}
+
+			cs.gotBodyFull = false
+			cs.bodyIndex = 0
+			cs.bodyRemain = cs.MsgLength
+			cs.ChunkBody = make([]byte, int(cs.MsgLength))
+		} else {
+			if cs.timeExtended {
+				b, err := c.readWriter.Peek(4)
+				if err != nil {
+					return err
+				}
+
+				tmpTimeStamp := binary.BigEndian.Uint32(b)
+				if tmpTimeStamp == cs.TimeStamp {
+					_, _ = c.readWriter.Discard(4)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (c *Conn) readChunkMessageBody(cs *ChunkStream) error {
+	size := cs.bodyRemain
+	if size > c.remoteChunkSize {
+		size = c.remoteChunkSize //important: read chunk from peer accord to min(remoteChunkSize, cs.remain)
+	}
+
+	buf := cs.ChunkBody[cs.bodyIndex : cs.bodyIndex+size]
+	if nr, err := c.readWriter.Read(buf); err != nil || nr != int(size) {
+		return errors.Wrapf(err, "read %d bytes, autual: %d", size, nr)
+	} else {
+		cs.bodyIndex += uint32(nr)
+		cs.bodyRemain -= uint32(nr)
+
+		if cs.bodyRemain == 0 {
+			cs.gotBodyFull = true
+		}
+	}
+
+	return nil
 }
 
 // write one chunk stream fully
@@ -155,13 +327,13 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 		inc := c.localChunksize
 		start := i * c.localChunksize
 
-		leftLen := uint32(len(cs.ChunkData)) - start
+		leftLen := uint32(len(cs.ChunkBody)) - start
 		if leftLen < c.localChunksize {
 			inc = leftLen
 		}
 		totalLen += inc
 
-		buf := cs.ChunkData[start : start+inc]
+		buf := cs.ChunkBody[start : start+inc]
 		if _, err := c.readWriter.Write(buf); err != nil { //write rtmp chunk body
 			return err
 		}
@@ -177,10 +349,10 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 func (c *Conn) onReadChunkStreamSucc(cs *ChunkStream) {
 	switch cs.MsgTypeID {
 	case MsgSetChunkSize:
-		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
+		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkBody)
 		_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
 	case MsgWindowAcknowledgementSize:
-		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
+		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkBody)
 		_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
 	default:
 	}
@@ -207,8 +379,8 @@ func (c *Conn) ack(size uint32) {
 }
 
 func (c *Conn) readChunk(cs *ChunkStream) error {
-	if cs.remain != 0 && cs.tmpFormat != 3 {
-		return fmt.Errorf("remain(%d) not zero while tmpFormat as 1/2/3", cs.remain)
+	if cs.bodyRemain != 0 && cs.tmpFormat != 3 {
+		return fmt.Errorf("remain(%d) not zero while tmpFormat as 1/2/3", cs.bodyRemain)
 	}
 
 	switch cs.Csid {
@@ -221,10 +393,10 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 	}
 
 	setRemainFlag := func(cs *ChunkStream) {
-		cs.gotFull = false
-		cs.index = 0
-		cs.remain = cs.MsgLength
-		cs.ChunkData = make([]byte, int(cs.MsgLength))
+		cs.gotBodyFull = false
+		cs.bodyIndex = 0
+		cs.bodyRemain = cs.MsgLength
+		cs.ChunkBody = make([]byte, int(cs.MsgLength))
 	}
 
 	switch cs.tmpFormat {
@@ -278,7 +450,7 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 		cs.TimeStamp += timeStamp
 		setRemainFlag(cs)
 	case 3:
-		if cs.remain == 0 {
+		if cs.bodyRemain == 0 {
 			switch cs.Fmt {
 			case 0:
 				if cs.timeExtended {
@@ -309,20 +481,20 @@ func (c *Conn) readChunk(cs *ChunkStream) error {
 		return fmt.Errorf("invalid rtmp format: %d", cs.Fmt)
 	}
 
-	size := cs.remain
+	size := cs.bodyRemain
 	if size > c.remoteChunkSize {
 		size = c.remoteChunkSize //important: read chunk from peer accord to min(remoteChunkSize, cs.remain)
 	}
 
-	buf := cs.ChunkData[cs.index : cs.index+size]
+	buf := cs.ChunkBody[cs.bodyIndex : cs.bodyIndex+size]
 	if nr, err := c.readWriter.Read(buf); err != nil || nr != int(size) {
 		return errors.Wrapf(err, "read %d bytes, autual: %d", size, nr)
 	} else {
-		cs.index += uint32(nr)
-		cs.remain -= uint32(nr)
+		cs.bodyIndex += uint32(nr)
+		cs.bodyRemain -= uint32(nr)
 
-		if cs.remain == 0 {
-			cs.gotFull = true
+		if cs.bodyRemain == 0 {
+			cs.gotBodyFull = true
 		}
 	}
 
@@ -420,6 +592,21 @@ func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
 	return nil
 }
 
+func byteSliceAsUint(b []byte, bigEndian bool) uint32 {
+	ret := uint32(0)
+
+	n := len(b)
+	for i := 0; i < n; i++ {
+		if bigEndian { // big endian
+			ret = ret<<8 + uint32(b[i])
+		} else { // little endian
+			ret += uint32(b[i]) << uint32(i*8)
+		}
+	}
+
+	return ret
+}
+
 type RtmpMsgTypeID uint32
 
 const (
@@ -454,7 +641,7 @@ const (
 )
 
 const (
-	streamBegin      uint32 = 0
+	streamBegin uint32 = 0
 	//streamEOF        uint32 = 1
 	//streamDry        uint32 = 2
 	//setBufferLen     uint32 = 3

@@ -281,10 +281,10 @@ func (c *Conn) handleControlMessage(cs *ChunkStream) {
 
 func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 	if cs.MsgTypeID == MsgAMF3CommandMessage {
-		cs.ChunkData = cs.ChunkData[1:]
+		cs.ChunkBody = cs.ChunkBody[1:]
 	}
 
-	r := bytes.NewReader(cs.ChunkData)
+	r := bytes.NewReader(cs.ChunkBody)
 	vs, err := c.amfDecoder.DecodeBatch(r, amf.Version(amf.AMF0))
 	if err != nil && err != io.EOF {
 		_ = c.logger.Log("level", "ERROR", "event", "amf decode chunk body", "error", err.Error())
@@ -396,7 +396,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 
 	// Set Peer Bandwidth
 	respCs = newChunkStream().asControlMessage(MsgSetPeerBandwidth, 5, 2500000)
-	respCs.ChunkData[4] = 2
+	respCs.ChunkBody[4] = 2
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set Peer Bandwidth", "error", err.Error())
 		return err
@@ -467,7 +467,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	// set recorded
 	cs1 := NewUserControlMessage(streamIsRecorded, 4)
 	for i := 0; i < 4; i++ {
-		cs1.ChunkData[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
+		cs1.ChunkBody[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
 	}
 	if err := c.writeChunStream(cs1); err != nil {
 		return errors.Wrap(err, "send user control message streamIsRecorded")
@@ -476,7 +476,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	// set begin
 	cs2 := NewUserControlMessage(streamBegin, 4)
 	for i := 0; i < 4; i++ {
-		cs2.ChunkData[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
+		cs2.ChunkBody[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
 	}
 	if err := c.writeChunStream(cs2); err != nil {
 		return errors.Wrap(err, "send user control message streamBegin")
@@ -582,7 +582,7 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 				MsgStreamID: streamID,
 			},
 		},
-		ChunkData: cmdMsgBody,
+		ChunkBody: cmdMsgBody,
 	}
 
 	if err := c.writeChunStream(&cs); err != nil {
