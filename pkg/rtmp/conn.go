@@ -217,8 +217,9 @@ func (c *Conn) Handshake() error {
 }
 
 func (c *Conn) handleCommandMessage() error {
+	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
 	for {
-		cs, err := c.readChunkStream()
+		cs, err := c.readChunkStream(basicHdrBuf)
 		if err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "recv chunk stream", "error", err.Error())
 			return err

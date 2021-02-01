@@ -99,9 +99,9 @@ func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 }
 
 //read one chunk stream fully
-func (c *Conn) readChunkStream() (*ChunkStream, error) {
+func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 	for {
-		basicHdr, err := c.readChunkBasicHeader()
+		basicHdr, err := c.readChunkBasicHeader(basicHdrBuf)
 		if err != nil {
 			return nil, err
 		}
@@ -129,10 +129,8 @@ func (c *Conn) readChunkStream() (*ChunkStream, error) {
 	}
 }
 
-func (c *Conn) readChunkBasicHeader() (*ChunkBasicHeader, error) {
-	b := make([]byte, 3)
-
-	h, err := c.ReadUint(b[0:1], true)
+func (c *Conn) readChunkBasicHeader(basicHdrBuf []byte) (*ChunkBasicHeader, error) {
+	h, err := c.ReadUint(basicHdrBuf[0:1], true)
 	if err != nil {
 		return nil, errors.Wrap(err, "basic header requires 1 bytes")
 	}
@@ -142,13 +140,13 @@ func (c *Conn) readChunkBasicHeader() (*ChunkBasicHeader, error) {
 
 	switch csid {
 	case 0: // 64-319, 2Bytes chunk basic header
-		id, err := c.ReadUint(b[1:2], false)
+		id, err := c.ReadUint(basicHdrBuf[1:2], false)
 		if err != nil {
 			return nil, errors.Wrap(err, "basic header requires 2 bytes")
 		}
 		csid = id + 64
 	case 1: // 64-65599, 3Bytes chunk basic header
-		id, err := c.ReadUint(b[1:3], false)
+		id, err := c.ReadUint(basicHdrBuf[1:3], false)
 		if err != nil {
 			return nil, errors.Wrap(err, "basic header requires 3 bytes")
 		}
