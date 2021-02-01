@@ -154,8 +154,12 @@ func (c *Conn) Serve() {
 		} else {
 			ss := val.(*streamSource)
 			if ss.pub == nil {
-				ss.setPublisher(newPublisher(c, c.streamKey))
+				pub = newPublisher(c, c.streamKey)
+				ss.setPublisher(pub)
 				c.ssMgr.streamMap.Store(c.streamKey, ss)
+			} else {
+				_ = c.logger.Log("level", "ERROR", "event", "stream is busy")
+				return
 			}
 		}
 
