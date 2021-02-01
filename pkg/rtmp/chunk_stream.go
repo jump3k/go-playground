@@ -31,7 +31,9 @@ type ChunkStream struct {
 	ChunkHeader
 	ChunkBody []byte
 
-	msgHdrSize   int
+	msgHdrSize int
+	msgHdrBuf  []byte // At most 11bytes
+
 	timeExtended bool
 	gotBodyFull  bool
 	bodyIndex    uint32
@@ -108,6 +110,7 @@ func (c *Conn) readChunkStream() (*ChunkStream, error) {
 		if !ok {
 			cs = newChunkStream()
 			cs.ChunkHeader.ChunkBasicHeader = *basicHdr
+			cs.msgHdrBuf = make([]byte, 11)
 			c.chunks[cs.Csid] = cs
 		}
 
@@ -171,7 +174,7 @@ func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
 
 	var buf []byte
 	if cs.msgHdrSize > 0 {
-		buf = make([]byte, cs.msgHdrSize)
+		buf = cs.msgHdrBuf[0:cs.msgHdrSize]
 		if nr, err := c.readWriter.Read(buf); err != nil || nr != cs.msgHdrSize {
 			return errors.Wrapf(err, "read %d bytes message header", cs.msgHdrSize)
 		}
