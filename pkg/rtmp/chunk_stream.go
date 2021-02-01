@@ -127,7 +127,9 @@ func (c *Conn) readChunkStream() (*ChunkStream, error) {
 }
 
 func (c *Conn) readChunkBasicHeader() (*ChunkBasicHeader, error) {
-	h, err := c.ReadUint(1, true)
+	b := make([]byte, 3)
+
+	h, err := c.ReadUint(b[0:1], true)
 	if err != nil {
 		return nil, errors.Wrap(err, "basic header requires 1 bytes")
 	}
@@ -137,13 +139,13 @@ func (c *Conn) readChunkBasicHeader() (*ChunkBasicHeader, error) {
 
 	switch csid {
 	case 0: // 64-319, 2Bytes chunk basic header
-		id, err := c.ReadUint(1, false)
+		id, err := c.ReadUint(b[1:2], false)
 		if err != nil {
 			return nil, errors.Wrap(err, "basic header requires 2 bytes")
 		}
 		csid = id + 64
 	case 1: // 64-65599, 3Bytes chunk basic header
-		id, err := c.ReadUint(2, false)
+		id, err := c.ReadUint(b[1:3], false)
 		if err != nil {
 			return nil, errors.Wrap(err, "basic header requires 3 bytes")
 		}
@@ -217,12 +219,14 @@ func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
 			switch cs.Fmt {
 			case 0:
 				if cs.timeExtended {
-					cs.TimeStamp, _ = c.ReadUint(4, true)
+					b := make([]byte, 4)
+					cs.TimeStamp, _ = c.ReadUint(b, true)
 				}
 			case 1, 2:
 				timedelta := cs.ExtendedTimeStamp
 				if cs.timeExtended {
-					timedelta, _ = c.ReadUint(4, true)
+					b := make([]byte, 4)
+					timedelta, _ = c.ReadUint(b, true)
 				}
 				cs.TimeStamp += timedelta
 			}
@@ -401,24 +405,13 @@ END:
 	return nil
 }
 
-func (c *Conn) ReadUint(n int, bigEndian bool) (uint32, error) {
-	ret := uint32(0)
-
-	bytes := make([]byte, n)
-	if nr, err := c.readWriter.Read(bytes); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte, actual: %d", n, nr), "error", err.Error())
+func (c *Conn) ReadUint(b []byte, bigEndian bool) (uint32, error) {
+	if nr, err := c.readWriter.Read(b); err != nil {
+		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte, actual: %d", len(b), nr), "error", err.Error())
 		return 0, err
 	}
 
-	for i := 0; i < n; i++ {
-		if bigEndian { // big endian
-			ret = ret<<8 + uint32(bytes[i])
-		} else { // little endian
-			ret += uint32(bytes[i]) << uint32(i*8)
-		}
-	}
-
-	return ret, nil
+	return byteSliceAsUint(b, bigEndian), nil
 }
 
 func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
@@ -477,4 +470,3 @@ const (
 	MsgAMF0CommandMessage                                  //0x14
 	MsgAggregateMessage           RtmpMsgTypeID = 22       //0x16
 )
-
