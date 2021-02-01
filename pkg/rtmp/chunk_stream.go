@@ -44,13 +44,22 @@ func newChunkStream() *ChunkStream {
 	return &ChunkStream{}
 }
 
-func (cs *ChunkStream) asControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
-	cs.Fmt = 0
-	cs.Csid = 2
-	cs.MsgTypeID = typeID
-	cs.MsgStreamID = 0
-	cs.MsgLength = length
-	cs.ChunkBody = make([]byte, length)
+func NewProtolControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
+	cs := &ChunkStream {
+		ChunkHeader: ChunkHeader{
+			ChunkBasicHeader: ChunkBasicHeader{
+				Fmt: 0,
+				Csid: 2,
+			},
+			ChunkMessageHeader: ChunkMessageHeader{
+				MsgTypeID: typeID,
+				MsgStreamID: 0,
+				MsgLength: length,
+			},
+		},
+		ChunkBody: make([]byte, length),
+	}
+
 	putU32BE(cs.ChunkBody[:length], value)
 
 	return cs
@@ -346,7 +355,7 @@ func (c *Conn) ack(size uint32) {
 
 	c.ackSeqNumber += size
 	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
-		cs := newChunkStream().asControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
+		cs := NewProtolControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
 			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
 		}

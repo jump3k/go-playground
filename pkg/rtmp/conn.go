@@ -388,7 +388,7 @@ func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 
 func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	// WindowAcknowledgement Size
-	respCs := newChunkStream().asControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
+	respCs := NewProtolControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set WindowAckSize Message", "error", err.Error())
 		return err
@@ -396,7 +396,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	_ = c.logger.Log("level", "INFO", "event", "Send WindowAckSize Message", "ret", "success")
 
 	// Set Peer Bandwidth
-	respCs = newChunkStream().asControlMessage(MsgSetPeerBandwidth, 5, 2500000)
+	respCs = NewProtolControlMessage(MsgSetPeerBandwidth, 5, 2500000)
 	respCs.ChunkBody[4] = 2
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set Peer Bandwidth", "error", err.Error())
@@ -405,7 +405,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	_ = c.logger.Log("level", "INFO", "event", "Set Peer Bandwidth", "ret", "success")
 
 	// set chunk size
-	respCs = newChunkStream().asControlMessage(MsgSetChunkSize, 4, c.localChunksize)
+	respCs = NewProtolControlMessage(MsgSetChunkSize, 4, c.localChunksize)
 	if err := c.writeChunStream(respCs); err != nil {
 		_ = c.logger.Log("level", "ERROR", "event", "Set Chunk Size", "error", err.Error())
 		return err
