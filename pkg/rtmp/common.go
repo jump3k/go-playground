@@ -1,12 +1,12 @@
 package rtmp
 
 import (
-	"github.com/go-kit/kit/log"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
-	logger log.Logger
+	Logger *logrus.Logger
 
 	connReadBufSize  int
 	connWriteBufSize int

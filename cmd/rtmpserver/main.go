@@ -1,15 +1,30 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"playground/internal/logging"
 	"playground/pkg/rtmp"
+
+	"github.com/sirupsen/logrus"
 )
+
+func initLogger(config *rtmp.Config) (*logrus.Logger, error) {
+	return (&logging.LogConfig{
+		LogPath:         "logs/error.log",
+		RotationTime:    24 * time.Hour,
+		ReverseDays:     7,
+		Level:           "INFO",
+		Format:          "text",
+		UseStderr:       true,
+		SetRepoerCaller: false,
+	}).NewLogger()
+}
 
 func main() {
 	go func() {
@@ -17,8 +32,16 @@ func main() {
 	}()
 
 	go func() {
-		if err := rtmp.ListenAndServe("tcp", ":1935", &rtmp.Config{}); err != nil {
-			log.Fatal(err)
+		config := &rtmp.Config{} //TODO
+
+		logger, err := initLogger(config)
+		if err != nil {
+			panic(err)
+		}
+		config.Logger = logger
+
+		if err := rtmp.ListenAndServe("tcp", ":1935", config); err != nil {
+			logrus.Fatal(err)
 		}
 	}()
 

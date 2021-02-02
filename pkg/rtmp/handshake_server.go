@@ -29,13 +29,14 @@ func (c *Conn) serverHandshake() error {
 	s0s1 := s0s1s2[:1536+1]
 	s2 := s0s1s2[1536+1:]
 
-	_ = c.logger.Log("level", "INFO", "event", "start to server handshake")
+	c.logger.WithField("event", "start to server handshake...").Info("")
 
 	// read c0c1
 	if _, err := io.ReadFull(c.readWriter, c0c1); err != nil {
+		c.logger.WithField("event", "read c0c1").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "read c0c1", "ret", "success")
+	c.logger.WithField("event", "read c0c1").Info("success")
 
 	if c0[0] != 3 {
 		return fmt.Errorf("rtmp: handshake version=%d invalid", c0c1[0])
@@ -52,29 +53,32 @@ func (c *Conn) serverHandshake() error {
 			handshakeCreate01(s0s1, srvTime, srvVer, hsServerPartialKey)
 			handshakeCreate2(s2, digest)
 		}
-		_ = c.logger.Log("level", "INFO", "event", "complex handshake")
+		c.logger.WithField("event", "complex handshake").Info("")
 	} else {
 		s0[0] = 3
 		copy(s1, c2)
 		copy(s2, c1)
-		_ = c.logger.Log("level", "INFO", "event", "simple handshake")
+		c.logger.WithField("event", "simple handshake").Info("")
 	}
 
 	// write s0s1s2
 	if _, err := c.readWriter.Write(s0s1s2); err != nil {
+		c.logger.WithField("event", "write s0s1s2").Error(err)
 		return err
 	}
 
 	if err := c.readWriter.Flush(); err != nil {
+		c.logger.WithField("event", "flush s0s1s2").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "write s0s1")
+	c.logger.WithField("event", "flush s0s1s2").Info("")
 
 	// read c2
 	if _, err := io.ReadFull(c, c2); err != nil {
+		c.logger.WithField("event", "read c2").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "read c2")
+	c.logger.WithField("event", "read c2").Info("")
 
 	return nil
 }

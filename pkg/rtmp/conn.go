@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/gwuhaolin/livego/protocol/amf"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -30,7 +30,7 @@ type Conn struct {
 
 	readWriter *readWriter
 	config     *Config
-	logger     log.Logger
+	logger     *logrus.Logger
 
 	handshakeMutex  sync.Mutex
 	HandshakeStatus uint32
@@ -111,11 +111,8 @@ func (c *Conn) Write(b []byte) (int, error) {
 func (c *Conn) Serve() {
 	defer c.Close()
 
-	_ = c.logger.Log("level", "INFO",
-		"event", "start to handle rtmp conn",
-		"local", c.LocalAddr().String()+" ("+c.LocalAddr().Network()+")",
-		"remote", c.RemoteAddr().String()+" ("+c.RemoteAddr().Network()+")",
-	)
+	logger := c.logger.WithFields(logrus.Fields{"event": "Serve Rtmp Conn"})
+	logger.Tracef("local: %s, remote: %s, network: %s", c.LocalAddr().String(), c.RemoteAddr().String(), c.LocalAddr().Network())
 
 	/*
 		if err := c.SetDeadline(time.Now().Add(10 * time.Second)); err != nil { //TODO: timeout config
@@ -123,27 +120,31 @@ func (c *Conn) Serve() {
 		}
 	*/
 
+	logger = c.logger.WithFields(logrus.Fields{"event": "serverHandshake"})
 	if err := c.Handshake(); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "serverHandshake", "error", err.Error())
+		logger.Error(err)
 		return
 	}
-	_ = c.logger.Log("level", "INFO", "event", "serverHandshake", "ret", "success")
+	logger.Info("success")
 
+	logger = c.logger.WithFields(logrus.Fields{"event": "handleCommandMessage"})
 	if err := c.handleCommandMessage(); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "handleCommandMessage", "error", err.Error())
+		logger.Error(err)
 		return
 	}
-	_ = c.logger.Log("level", "INFO", "event", "handleCommandMessage", "ret", "success")
+	logger.Info("success")
 
+	logger = c.logger.WithFields(logrus.Fields{"event": "discover tcUrl"})
 	if err := c.discoverTcUrl(); err != nil {
-		_ = c.logger.Log("level", "INFO", "event", "discover tcUrl", "error", err.Error())
+		logger.Error(err)
 		return
 	}
-	_ = c.logger.Log("level", "INFO", "event", "discover tcUrl", "data",
-		fmt.Sprintf("domain: '%s', app: '%s', stream: '%s', args: '%s'", c.domain, c.appName, c.streamName, c.args))
+	logger.Infof("domain: '%s', app: '%s', stream: '%s', args: '%s'", c.domain, c.appName, c.streamName, c.args)
 	c.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
 
 	if c.isPublisher { // publish
+		logger = c.logger.WithFields(logrus.Fields{"event": "publish"})
+
 		var ss *streamSource
 		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
 		if !ok { //stream source not exists
@@ -154,7 +155,7 @@ func (c *Conn) Serve() {
 		} else {
 			ss = val.(*streamSource)
 			if ss.publisher != nil { // stream exists and is publishing
-				_ = c.logger.Log("level", "ERROR", "event", "stream is busy")
+				logger.Error("stream is busy")
 				return
 			} else {
 				ss.setPublisher(newPublisher(c, c.streamKey))
@@ -166,16 +167,18 @@ func (c *Conn) Serve() {
 			return
 		}
 	} else { //play
+		logger = c.logger.WithFields(logrus.Fields{"event": "play"})
+
 		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
 		if !ok {
-			_ = c.logger.Log("level", "ERROR", "event", "play", "error", "stream not exists")
+			logger.Error("stream not exists")
 			return
 		}
 
 		sub := newSubscriber(c)
 		ss := val.(*streamSource)
 		if !ss.addSubscriber(sub) {
-			_ = c.logger.Log("level", "ERROR", "event", "play", "error", "already subscribe")
+			logger.Error("already subscribe")
 			return
 		}
 
@@ -218,17 +221,20 @@ func (c *Conn) Handshake() error {
 
 func (c *Conn) handleCommandMessage() error {
 	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
+	logger := c.logger.WithFields(logrus.Fields{"event": "recv chunk stream"})
+
 	for {
 		cs, err := c.readChunkStream(basicHdrBuf)
 		if err != nil {
-			_ = c.logger.Log("level", "ERROR", "event", "recv chunk stream", "error", err.Error())
+			logger.Error(err)
 			return err
 		}
-		_ = c.logger.Log("level", "INFO", "event", "recv chunk stream", "data", fmt.Sprintf("%#v", cs))
+		logger.WithField("data", fmt.Sprintf("%#v", cs)).Info("")
 
 		switch cs.MsgTypeID {
 		case MsgAMF0CommandMessage, MsgAMF3CommandMessage:
 			if err := c.decodeCommandMessage(cs); err != nil {
+				logger.WithField("action", "decodeCommandMessage").Error(err)
 				return err
 			}
 		}
@@ -288,10 +294,10 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 	r := bytes.NewReader(cs.ChunkBody)
 	vs, err := c.amfDecoder.DecodeBatch(r, amf.Version(amf.AMF0))
 	if err != nil && err != io.EOF {
-		_ = c.logger.Log("level", "ERROR", "event", "amf decode chunk body", "error", err.Error())
+		c.logger.WithField("event", "amf decode chunk body").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "amf decode chunk body", "data", fmt.Sprintf("%#v", vs))
+	c.logger.WithField("event", "amf decode chunk body").WithField("data", fmt.Sprintf("%#v", vs)).Trace("")
 
 	if cmdStr, ok := vs[0].(string); ok {
 		switch cmdStr {
@@ -323,7 +329,7 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 
 			c.handleCommandMessageDone = true
 			c.isPublisher = true
-			_ = c.logger.Log("level", "INFO", "event", "decode Publish Msg", "ret", "success")
+			c.logger.WithField("event", "decode Publish Msg").Info("success")
 		case cmdPlay:
 			if err := c.decodePlayCmdMessage(vs[1:]); err != nil {
 				return err
@@ -334,11 +340,11 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 
 			c.handleCommandMessageDone = true
 			c.isPublisher = false
-			_ = c.logger.Log("level", "INFO", "event", "decode Play Msg", "ret", "success")
+			c.logger.WithField("event", "decode Play Msg").Info("success")
 		case cmdFCUnpublish, cmdDeleteStream:
 		default:
 			err := fmt.Errorf("unsupport command=%s", cmdStr)
-			_ = c.logger.Log("level", "ERROR", "event", "parse AMF command", "error", err.Error())
+			c.logger.WithField("event", "parse AMF command").Error(err)
 			return err
 		}
 	}
@@ -379,9 +385,11 @@ func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 		}
 	}
 
-	_ = c.logger.Log("level", "INFO", "event", "parse connect command msg",
-		"data", fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', swfUrl: '%s', tcUrl: '%s', objectEncoding: %d",
-			c.transactionID, c.appName, c.flashVer, c.swfUrl, c.tcUrl, c.objectEncoding))
+	c.logger.WithFields(logrus.Fields{
+		"event": "parse connect command msg",
+		"data": fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', swfUrl: '%s', tcUrl: '%s', objectEncoding: %d",
+			c.transactionID, c.appName, c.flashVer, c.swfUrl, c.tcUrl, c.objectEncoding),
+	}).Info("")
 
 	return nil
 }
@@ -390,27 +398,27 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	// WindowAcknowledgement Size
 	respCs := NewProtolControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
 	if err := c.writeChunStream(respCs); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "Set WindowAckSize Message", "error", err.Error())
+		c.logger.WithField("event", "Set WindowAckSize Message").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "Send WindowAckSize Message", "ret", "success")
+	c.logger.WithField("event", "Set WindowAckSize Message").Info("success")
 
 	// Set Peer Bandwidth
 	respCs = NewProtolControlMessage(MsgSetPeerBandwidth, 5, 2500000)
 	respCs.ChunkBody[4] = 2
 	if err := c.writeChunStream(respCs); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "Set Peer Bandwidth", "error", err.Error())
+		c.logger.WithField("event", "Set Peer Bandwidth").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "Set Peer Bandwidth", "ret", "success")
+	c.logger.WithField("event", "Set Peer Bandwidth").Info("success")
 
 	// set chunk size
 	respCs = NewProtolControlMessage(MsgSetChunkSize, 4, c.localChunksize)
 	if err := c.writeChunStream(respCs); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "Set Chunk Size", "error", err.Error())
+		c.logger.WithField("event", "Set Chunk Size").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "Set Chunk Size", "ret", "success")
+	c.logger.WithField("event", "Set Chunk Size").Info("success")
 
 	// NetConnection.Connect.Success
 	resp := make(amf.Object)
@@ -423,10 +431,10 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	event["description"] = "Connection succeeded."
 	event["objectEncoding"] = c.objectEncoding
 	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, resp, event); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", "NetConnection.Connect.Success", "error", err.Error())
+		c.logger.WithField("event", "NetConnection.Connect.Success").Error(err)
 		return err
 	}
-	_ = c.logger.Log("level", "INFO", "event", "NetConnection.Connect.Success", "ret", "success")
+	c.logger.WithField("event", "NetConnection.Connect.Success").Info("success")
 
 	return nil
 }
@@ -564,7 +572,7 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 	buffer := bytes.NewBuffer([]byte{})
 	for _, v := range args {
 		if _, err := c.amfEncoder.Encode(buffer, v, amf.AMF0); err != nil {
-			_ = c.logger.Log("level", "ERROR", "event", "amf encode", "error", err.Error())
+			c.logger.WithField("event", "amf encode").Error(err)
 			return err
 		}
 	}

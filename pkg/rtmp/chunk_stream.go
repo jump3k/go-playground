@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"playground/pkg/av"
 )
@@ -337,10 +338,10 @@ func (c *Conn) onReadChunkStreamSucc(cs *ChunkStream) {
 	switch cs.MsgTypeID {
 	case MsgSetChunkSize:
 		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkBody)
-		_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
+		c.logger.WithFields(logrus.Fields{"event": "save remoteChunkSize", "data": c.remoteChunkSize}).Info("")
 	case MsgWindowAcknowledgementSize:
 		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkBody)
-		_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
+		c.logger.WithFields(logrus.Fields{"event": "save remoteWindowAckSize", "data": c.remoteWindowAckSize}).Info("")
 	default:
 	}
 
@@ -358,7 +359,7 @@ func (c *Conn) ack(size uint32) {
 	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
 		cs := NewProtolControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
 		if err := c.writeChunStream(cs); err != nil {
-			_ = c.logger.Log("level", "ERROR", "event", "send Ack", "error", err.Error())
+			c.logger.WithFields(logrus.Fields{"event": "send ACK"}).Error(err)
 		}
 
 		c.ackSeqNumber = 0
@@ -418,7 +419,7 @@ END:
 
 func (c *Conn) ReadUint(b []byte, bigEndian bool) (uint32, error) {
 	if nr, err := c.readWriter.Read(b); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("read %d byte, actual: %d", len(b), nr), "error", err.Error())
+		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("read %d byte, actual: %d", len(b), nr)}).Error(err)
 		return 0, err
 	}
 
@@ -438,7 +439,7 @@ func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
 	}
 
 	if nw, err := c.readWriter.Write(buf); err != nil {
-		_ = c.logger.Log("level", "ERROR", "event", fmt.Sprintf("write %d byte, actual: %d", nbytes, nw), "error", err.Error())
+		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("write %d byte, actual: %d", nbytes, nw)}).Error(err)
 		return err
 	}
 

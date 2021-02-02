@@ -2,12 +2,12 @@ package rtmp
 
 import (
 	//"log"
-	"fmt"
+
 	"net"
 	"os"
 
-	"github.com/go-kit/kit/log"
 	"github.com/gwuhaolin/livego/protocol/amf"
+	"github.com/sirupsen/logrus"
 )
 
 // Server returns a new RTMP server side conncetion
@@ -41,7 +41,7 @@ func Server(conn net.Conn, ssMgr *streamSourceMgr, config *Config) *Conn {
 	c.amfDecoder = &amf.Decoder{}
 	c.amfEncoder = &amf.Encoder{}
 
-	c.logger = config.logger
+	c.logger = config.Logger
 
 	return c
 }
@@ -89,25 +89,22 @@ func Listen(network, laddr string, config *Config) (net.Listener, error) {
 }
 
 func ListenAndServe(network, laddr string, config *Config) error {
-	if config.logger == nil {
-		logger := log.NewLogfmtLogger(os.Stdout)
-		logger = log.With(logger, "time", log.DefaultTimestamp)
-		logger = log.With(logger, "caller", log.DefaultCaller)
-		config.logger = logger
-	}
+	logger := config.Logger.WithFields(logrus.Fields{
+		"event": "ListenAndServe",
+	})
 
 	l, err := Listen(network, laddr, config)
 	if err != nil {
+		logger.Error(err)
 		return err
 	}
 
-	_ = config.logger.Log("event", "rtmp listen",
-		"addr", fmt.Sprintf("%s[%s]", l.Addr().String(), l.Addr().Network()),
-		"pid", os.Getpid())
+	logger.Tracef("listen at addr: %s, network: %s, pid: %d", l.Addr().String(), l.Addr().Network(), os.Getpid())
 
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			config.Logger.WithFields(logrus.Fields{"event": "Accept"}).Error(err)
 			continue
 		}
 

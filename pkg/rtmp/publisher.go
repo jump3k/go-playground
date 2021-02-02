@@ -1,7 +1,7 @@
 package rtmp
 
 import (
-	"github.com/go-kit/kit/log"
+	"github.com/sirupsen/logrus"
 
 	"playground/pkg/flv"
 )
@@ -14,7 +14,7 @@ type publisher struct {
 	demuxer *flv.Demuxer
 
 	ssMgr  *streamSourceMgr
-	logger log.Logger
+	logger *logrus.Logger
 }
 
 func newPublisher(c *Conn, streamKey string) *publisher {
@@ -36,7 +36,7 @@ func (p *publisher) publishingCycle() error {
 	for {
 		cs, err := p.rtmpConn.readChunkStream(basicHdrBuf)
 		if err != nil {
-			_ = p.logger.Log("level", "ERROR", "event", "recv av stream", "error", err.Error())
+			p.logger.WithField("event", "recv av stream").Error(err)
 			return err
 		}
 		//_ = p.logger.Log("level", "ERROR", "event", "recv av chunk stream", "data", fmt.Sprintf("%#v", cs))

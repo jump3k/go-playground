@@ -9,6 +9,8 @@ require (
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/google/uuid v1.1.4
 	github.com/gwuhaolin/livego v0.0.0-20210119152854-12948dfb6782
+	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
+	github.com/lestrrat-go/strftime v1.0.4 // indirect
 	github.com/nats-io/nats.go v1.9.1
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.3.0

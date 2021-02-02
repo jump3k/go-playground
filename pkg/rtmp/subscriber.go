@@ -1,7 +1,7 @@
 package rtmp
 
 import (
-	"github.com/go-kit/kit/log"
+	"github.com/sirupsen/logrus"
 )
 
 type subscriber struct {
@@ -10,7 +10,7 @@ type subscriber struct {
 
 	stopSub <-chan bool
 	subType string // "gerneral"
-	logger  log.Logger
+	logger  *logrus.Logger
 }
 
 func newSubscriber(c *Conn) *subscriber {
