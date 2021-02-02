@@ -45,16 +45,16 @@ func newChunkStream() *ChunkStream {
 }
 
 func NewProtolControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
-	cs := &ChunkStream {
+	cs := &ChunkStream{
 		ChunkHeader: ChunkHeader{
 			ChunkBasicHeader: ChunkBasicHeader{
-				Fmt: 0,
+				Fmt:  0,
 				Csid: 2,
 			},
 			ChunkMessageHeader: ChunkMessageHeader{
-				MsgTypeID: typeID,
+				MsgTypeID:   typeID,
 				MsgStreamID: 0,
-				MsgLength: length,
+				MsgLength:   length,
 			},
 		},
 		ChunkBody: make([]byte, length),
@@ -110,20 +110,21 @@ func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 //read one chunk stream fully
 func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 	for {
-		basicHdr, err := c.readChunkBasicHeader(basicHdrBuf)
+		fmt, csid, err := c.readChunkBasicHeader(basicHdrBuf)
 		if err != nil {
 			return nil, err
 		}
 
-		cs, ok := c.chunks[basicHdr.Csid]
+		cs, ok := c.chunks[csid]
 		if !ok {
 			cs = newChunkStream()
-			cs.ChunkHeader.ChunkBasicHeader = *basicHdr
+			cs.Fmt = fmt
+			cs.Csid = csid
 			cs.msgHdrBuf = make([]byte, 11)
 			c.chunks[cs.Csid] = cs
 		}
 
-		if err := c.readChunkMessageHeader(cs, basicHdr.Fmt); err != nil {
+		if err := c.readChunkMessageHeader(cs, fmt); err != nil {
 			return nil, err
 		}
 
@@ -138,10 +139,10 @@ func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 	}
 }
 
-func (c *Conn) readChunkBasicHeader(basicHdrBuf []byte) (*ChunkBasicHeader, error) {
+func (c *Conn) readChunkBasicHeader(basicHdrBuf []byte) (uint8, uint32, error) {
 	h, err := c.ReadUint(basicHdrBuf[0:1], true)
 	if err != nil {
-		return nil, errors.Wrap(err, "basic header requires 1 bytes")
+		return 0, 0, errors.Wrap(err, "basic header requires 1 bytes")
 	}
 
 	fmt := uint8(h >> 6)
@@ -151,20 +152,20 @@ func (c *Conn) readChunkBasicHeader(basicHdrBuf []byte) (*ChunkBasicHeader, erro
 	case 0: // 64-319, 2Bytes chunk basic header
 		id, err := c.ReadUint(basicHdrBuf[1:2], false)
 		if err != nil {
-			return nil, errors.Wrap(err, "basic header requires 2 bytes")
+			return fmt, csid, errors.Wrap(err, "basic header requires 2 bytes")
 		}
 		csid = id + 64
 	case 1: // 64-65599, 3Bytes chunk basic header
 		id, err := c.ReadUint(basicHdrBuf[1:3], false)
 		if err != nil {
-			return nil, errors.Wrap(err, "basic header requires 3 bytes")
+			return fmt, csid, errors.Wrap(err, "basic header requires 3 bytes")
 		}
 		csid = id + 64
 	default: // 2-63, 1Byte chunk basic header
 		// csid > 1
 	}
 
-	return &ChunkBasicHeader{Fmt: fmt, Csid: csid}, nil
+	return fmt, csid, nil
 }
 
 func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
