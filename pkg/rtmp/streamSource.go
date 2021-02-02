@@ -16,13 +16,13 @@ type streamSource struct {
 	ssMgr     *streamSourceMgr
 }
 
-func newStreamSource(pub *publisher) *streamSource {
+func newStreamSource(pub *publisher, streamKey string, ssMgr *streamSourceMgr) *streamSource {
 	ss := &streamSource{
 		stopPublish: make(chan bool, 1),
 		publisher:   pub,
 		subs:        make(map[string]*subscriber),
-		streamKey:   pub.streamKey,
-		ssMgr:       pub.ssMgr,
+		streamKey:   streamKey,
+		ssMgr:       ssMgr,
 	}
 
 	return ss

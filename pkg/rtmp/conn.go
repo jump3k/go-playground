@@ -148,7 +148,7 @@ func (c *Conn) Serve() {
 		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
 		if !ok { //stream source not exists
 			pub := newPublisher(c, c.streamKey)
-			ss = newStreamSource(pub)
+			ss = newStreamSource(pub, c.streamKey, c.ssMgr)
 
 			c.ssMgr.streamMap.Store(c.streamKey, ss) // save <streamKey, streamSource> pair
 		} else {
