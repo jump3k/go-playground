@@ -2,29 +2,60 @@ package rtmp
 
 import (
 	"sync"
+	"time"
 )
 
 type streamSource struct {
-	publishing <-chan bool
-	pub        *publisher
+	stopPublish chan bool
+	publisher   *publisher
 
 	subs      map[string]*subscriber
 	addSubMux sync.Mutex
+
+	streamKey string
+	ssMgr     *streamSourceMgr
 }
 
 func newStreamSource(pub *publisher) *streamSource {
 	ss := &streamSource{
-		publishing: make(<-chan bool, 1),
-		pub:        pub,
-		subs:       make(map[string]*subscriber),
+		stopPublish: make(chan bool, 1),
+		publisher:   pub,
+		subs:        make(map[string]*subscriber),
+		streamKey:   pub.streamKey,
+		ssMgr:       pub.ssMgr,
 	}
 
 	return ss
 }
 
+func (ss *streamSource) doPublishing() error {
+	err := ss.publisher.publishingCycle()
+	return err
+}
+
+func (ss *streamSource) doPlaying() error {
+	//TODO:
+	return nil
+}
+
 func (ss *streamSource) setPublisher(pub *publisher) *streamSource {
-	ss.pub = pub
+	ss.publisher = pub
 	return ss
+}
+
+func (ss *streamSource) delPublisher() {
+	ss.publisher = nil
+
+	time.AfterFunc(time.Minute, func() {
+		val, ok := ss.ssMgr.streamMap.Load(ss.streamKey)
+		if ok {
+			ssCache := val.(*streamSource)
+			if ssCache.publisher == nil {
+				ss.ssMgr.streamMap.Delete(ss.streamKey)
+				ss.stopPublish <- true
+			}
+		}
+	})
 }
 
 func (ss *streamSource) addSubscriber(sub *subscriber) bool {

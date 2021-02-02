@@ -144,27 +144,27 @@ func (c *Conn) Serve() {
 	c.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
 
 	if c.isPublisher { // publish
-		var pub *publisher
-
+		var ss *streamSource
 		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
-		if !ok {
-			pub = newPublisher(c, c.streamKey)
-			ss := newStreamSource(pub)
-			c.ssMgr.streamMap.Store(c.streamKey, ss)
+		if !ok { //stream source not exists
+			pub := newPublisher(c, c.streamKey)
+			ss = newStreamSource(pub)
+
+			c.ssMgr.streamMap.Store(c.streamKey, ss) // save <streamKey, streamSource> pair
 		} else {
-			ss := val.(*streamSource)
-			if ss.pub == nil {
-				pub = newPublisher(c, c.streamKey)
-				ss.setPublisher(pub)
-				c.ssMgr.streamMap.Store(c.streamKey, ss)
-			} else {
+			ss = val.(*streamSource)
+			if ss.publisher != nil { // stream exists and is publishing
 				_ = c.logger.Log("level", "ERROR", "event", "stream is busy")
 				return
+			} else {
+				ss.setPublisher(newPublisher(c, c.streamKey))
 			}
 		}
 
-		defer pub.close()
-		pub.publishingCycle()
+		defer ss.delPublisher()
+		if err := ss.doPublishing(); err != nil {
+			return
+		}
 	} else { //play
 		val, ok := c.ssMgr.streamMap.Load(c.streamKey)
 		if !ok {
@@ -180,7 +180,7 @@ func (c *Conn) Serve() {
 		}
 
 		select {
-		case <-ss.publishing: // publisher stop publishing
+		case <-ss.stopPublish: // publisher stop publishing
 			ss.delSubscriber(sub)
 			return
 		case <-sub.stopSub: // subscriber stop play

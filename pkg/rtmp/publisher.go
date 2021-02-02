@@ -1,9 +1,6 @@
 package rtmp
 
 import (
-	"fmt"
-	"time"
-
 	"github.com/go-kit/kit/log"
 
 	"playground/pkg/flv"
@@ -33,14 +30,14 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 	return p
 }
 
-func (p *publisher) publishingCycle() {
+func (p *publisher) publishingCycle() error {
 	// start to recv av data
 	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
 	for {
 		cs, err := p.rtmpConn.readChunkStream(basicHdrBuf)
 		if err != nil {
 			_ = p.logger.Log("level", "ERROR", "event", "recv av stream", "error", err.Error())
-			break
+			return err
 		}
 		//_ = p.logger.Log("level", "ERROR", "event", "recv av chunk stream", "data", fmt.Sprintf("%#v", cs))
 
@@ -52,41 +49,45 @@ func (p *publisher) publishingCycle() {
 
 			err := p.demuxer.DemuxHdr(avPkt)
 			if err != nil {
-				break
+				return err
 			}
 
-			val, ok := p.rtmpConn.ssMgr.streamMap.Load(p.streamKey)
-			if !ok {
-				_ = p.logger.Log("level", "FATAL", "event", "publishingCycle", "error", "streamSource not found while publishing")
-				break
-			}
+			/*
+				val, ok := p.rtmpConn.ssMgr.streamMap.Load(p.streamKey)
+				if !ok {
+					_ = p.logger.Log("level", "FATAL", "event", "publishingCycle", "error", "streamSource not found while publishing")
+					break
+				}
 
-			subs := val.(*streamSource).subs
-			for _, sub := range subs {
-				_ = sub
-				//TODO: send data to subscriber
-			}
+				subs := val.(*streamSource).subs
+				for _, sub := range subs {
+					_ = sub
+					//TODO: send data to subscriber
+				}
+			*/
 		default:
 		}
 	}
 }
 
+/*
 func (p *publisher) close() {
 	//p.pubMgr.deletePublisher(p.streamKey)
 	val, ok := p.ssMgr.streamMap.Load(p.streamKey)
 	if ok {
 		ss := val.(*streamSource)
-		ss.pub = nil
+		ss.publisher = nil
 	}
 
 	time.AfterFunc(time.Minute, func() { // check after 1min
 		val, ok := p.ssMgr.streamMap.Load(p.streamKey)
 		if ok {
 			ss := val.(*streamSource)
-			if ss.pub == nil {
+			if ss.publisher == nil {
 				p.ssMgr.streamMap.Delete(p.streamKey) //delete actual
 				_ = p.logger.Log("level", "INFO", "event", fmt.Sprintf("delete %s from streamMgr", p.streamKey))
 			}
 		}
 	})
 }
+*/
