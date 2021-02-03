@@ -139,8 +139,8 @@ func (c *Conn) Serve() {
 		logger.Error(err)
 		return
 	}
-	logger.Infof("domain: '%s', app: '%s', stream: '%s', args: '%s'", c.domain, c.appName, c.streamName, c.args)
 	c.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
+	logger.WithFields(logrus.Fields{"domain": c.domain, "app": c.appName, "stream": c.streamName, "args": c.args, "streamKey": c.streamKey}).Info("")
 
 	if c.isPublisher { // publish
 		logger = c.logger.WithFields(logrus.Fields{"event": "publish"})

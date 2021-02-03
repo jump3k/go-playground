@@ -9,10 +9,12 @@ type streamSource struct {
 	stopPublish chan bool
 	publisher   *publisher
 
-	subs      map[string]*subscriber
-	addSubMux sync.Mutex
+	subscribers     map[string]*subscriber
+	subscriberCount int
+	addSubMux       sync.Mutex
 
 	streamKey string
+	sessionID string
 	ssMgr     *streamSourceMgr
 }
 
@@ -20,8 +22,9 @@ func newStreamSource(pub *publisher, streamKey string, ssMgr *streamSourceMgr) *
 	ss := &streamSource{
 		stopPublish: make(chan bool, 1),
 		publisher:   pub,
-		subs:        make(map[string]*subscriber),
+		subscribers: make(map[string]*subscriber),
 		streamKey:   streamKey,
+		sessionID:   genUuid(),
 		ssMgr:       ssMgr,
 	}
 
@@ -62,9 +65,12 @@ func (ss *streamSource) addSubscriber(sub *subscriber) bool {
 	ss.addSubMux.Lock()
 	defer ss.addSubMux.Unlock()
 
-	if _, ok := ss.subs[sub.rtmpConn.RemoteAddr().String()]; ok { //exists
+	if _, ok := ss.subscribers[sub.rtmpConn.RemoteAddr().String()]; ok { //exists
 		return false
 	}
+
+	ss.subscribers[sub.rtmpConn.RemoteAddr().String()] = sub
+	ss.subscriberCount++
 
 	return true
 }
@@ -73,7 +79,7 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 	ss.addSubMux.Lock()
 	defer ss.addSubMux.Unlock()
 
-	delete(ss.subs, sub.rtmpConn.RemoteAddr().String())
+	delete(ss.subscribers, sub.rtmpConn.RemoteAddr().String())
 	return true
 }
 
