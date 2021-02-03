@@ -74,9 +74,10 @@ func (s *subscriber) avPktEnQueue(pkt *av.Packet) {
 	}
 }
 
+/*
 func (s *subscriber) avPktDeQueue() {
-	//TODO
 }
+*/
 
 func (s *subscriber) recordTimeStamp(cs *ChunkStream) {
 	switch cs.MsgTypeID {
