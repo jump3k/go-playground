@@ -367,21 +367,35 @@ func (c *Conn) ack(size uint32) {
 func (c *Conn) writeHeader(cs *ChunkStream) error {
 	// basic header
 	h := uint32(cs.Fmt) << 6
+	basicHdrWBuf := make([]byte, 2)
 	switch {
 	case cs.Csid < 64:
 		h |= cs.Csid
-		_ = c.writeUint(h, 1, true)
+		if err := c.writeUint(h, basicHdrWBuf[0:1], false); err != nil {
+			return err
+		}
 	case cs.Csid-64 < 256:
 		h |= 0
-		_ = c.writeUint(h, 1, true)
-		_ = c.writeUint(cs.Csid-64, 1, false)
+		if err := c.writeUint(h, basicHdrWBuf[0:1], false); err != nil {
+			return err
+		}
+
+		if err := c.writeUint(cs.Csid-64, basicHdrWBuf[0:1], false); err != nil {
+			return err
+		}
 	case cs.Csid-64 < 65536:
 		h |= 1
-		_ = c.writeUint(h, 1, true)
-		_ = c.writeUint(cs.Csid-64, 2, false)
+		if err := c.writeUint(h, basicHdrWBuf[0:1], false); err != nil {
+			return err
+		}
+
+		if err := c.writeUint(cs.Csid-64, basicHdrWBuf[0:2], false); err != nil {
+			return err
+		}
 	}
 
 	// message header
+	msgHdrWBuf := make([]byte, 11)
 	ts := cs.TimeStamp
 	if cs.Fmt == 3 {
 		goto END
@@ -390,7 +404,9 @@ func (c *Conn) writeHeader(cs *ChunkStream) error {
 	if cs.TimeStamp > 0xffffff {
 		ts = 0xffffff
 	}
-	_ = c.writeUint(ts, 3, true)
+	if err := c.writeUint(ts, msgHdrWBuf[0:3], true); err != nil {
+		return err
+	}
 
 	if cs.Fmt == 2 {
 		goto END
@@ -399,17 +415,25 @@ func (c *Conn) writeHeader(cs *ChunkStream) error {
 	if cs.MsgLength > 0xffffff {
 		return fmt.Errorf("length=%d", cs.MsgLength)
 	}
-	_ = c.writeUint(cs.MsgLength, 3, true)
-	_ = c.writeUint(uint32(cs.MsgTypeID), 1, true)
+	if err := c.writeUint(cs.MsgLength, msgHdrWBuf[0:3], true); err != nil {
+		return err
+	}
+	if err := c.writeUint(uint32(cs.MsgTypeID), msgHdrWBuf[0:1], true); err != nil {
+		return err
+	}
 
 	if cs.Fmt == 1 {
 		goto END
 	}
-	_ = c.writeUint(cs.MsgStreamID, 4, false)
+	if err := c.writeUint(cs.MsgStreamID, msgHdrWBuf[0:4], false); err != nil {
+		return err
+	}
 
 END:
 	if ts > 0xffffff {
-		_ = c.writeUint(cs.TimeStamp, 4, true)
+		if err := c.writeUint(cs.TimeStamp, msgHdrWBuf[0:4], true); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -424,17 +448,10 @@ func (c *Conn) ReadUint(b []byte, bigEndian bool) (uint32, error) {
 	return byteSliceAsUint(b, bigEndian), nil
 }
 
+/*
 func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
 	buf := make([]byte, nbytes)
-	for i := 0; i < nbytes; i++ {
-		if bigEndian {
-			v := val >> ((nbytes - i - 1) << 3)
-			buf[i] = byte(v) & 0xff
-		} else {
-			buf[i] = byte(val) & 0xff
-			val = val >> 8
-		}
-	}
+	uintAsbyteSlice(val, buf, bigEndian)
 
 	if nw, err := c.readWriter.Write(buf); err != nil {
 		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("write %d byte, actual: %d", nbytes, nw)}).Error(err)
@@ -442,6 +459,30 @@ func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
 	}
 
 	return nil
+}
+*/
+
+func (c *Conn) writeUint(val uint32, buf []byte, bigEndian bool) error {
+	uintAsbyteSlice(val, buf, bigEndian)
+	if nw, err := c.readWriter.Write(buf); err != nil {
+		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("write %d byte, actual: %d", len(buf), nw)}).Error(err)
+		return err
+	}
+
+	return nil
+}
+
+func uintAsbyteSlice(val uint32, b []byte, bigEndian bool) {
+	nbytes := len(b)
+	for i := 0; i < nbytes; i++ {
+		if bigEndian {
+			v := val >> ((nbytes - i - 1) << 3)
+			b[i] = byte(v) & 0xff
+		} else {
+			b[i] = byte(val) & 0xff
+			val = val >> 8
+		}
+	}
 }
 
 func byteSliceAsUint(b []byte, bigEndian bool) uint32 {

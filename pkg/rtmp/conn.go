@@ -588,6 +588,7 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 			},
 		},
 		ChunkBody: cmdMsgBody,
+		msgHdrBuf: make([]byte, 11),
 	}
 
 	if err := c.writeChunStream(&cs); err != nil {
