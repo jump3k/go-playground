@@ -1,8 +1,11 @@
 package rtmp
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 
+	"playground/pkg/av"
 	"playground/pkg/flv"
 )
 
@@ -25,43 +28,33 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 	return p
 }
 
-func (p *publisher) publishingCycle() error {
+func (p *publisher) publishingCycle(ss *streamSource) error {
 	// start to recv av data
 	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
+	avPkt := new(av.Packet)
+
+loopRecvAVChunkStream:
 	for {
 		cs, err := p.rtmpConn.readChunkStream(basicHdrBuf)
 		if err != nil {
-			p.logger.WithField("event", "recv av stream").Error(err)
+			p.logger.WithField("event", "recv av chunk stream").Error(err)
 			return err
 		}
-		//_ = p.logger.Log("level", "ERROR", "event", "recv av chunk stream", "data", fmt.Sprintf("%#v", cs))
+		p.logger.WithField("event", "recv av chunk stream").Tracef("data: %s", fmt.Sprintf("%#v", cs))
 
 		switch cs.MsgTypeID {
-		case MsgAudioMessage, MsgVideoMessage, MSGAMF0DataMessage, MsgAMF3DataMessage: //audio/video relational data
-			//TODO:demux av data
-			avPkt := cs.decodeAVChunkStream()
-			//_ = p.logger.Log("level", "INFO", "event", "AVPKT", "a:", avPkt.IsAudio, "v:", avPkt.IsVideo, "meta:", avPkt.IsMetaData)
-
-			err := p.demuxer.DemuxHdr(avPkt)
-			if err != nil {
-				return err
-			}
-
-			/*
-				val, ok := p.rtmpConn.ssMgr.streamMap.Load(p.streamKey)
-				if !ok {
-					_ = p.logger.Log("level", "FATAL", "event", "publishingCycle", "error", "streamSource not found while publishing")
-					break
-				}
-
-				subs := val.(*streamSource).subs
-				for _, sub := range subs {
-					_ = sub
-					//TODO: send data to subscriber
-				}
-			*/
+		case MsgAudioMessage:
+			avPkt.IsAudio = true
+		case MsgVideoMessage:
+			avPkt.IsVideo = true
+		case MSGAMF0DataMessage, MsgAMF3DataMessage:
+			avPkt.IsMetaData = true
 		default:
+			continue loopRecvAVChunkStream
 		}
+
+		avPkt.StreamID = cs.MsgStreamID
+		avPkt.Data = cs.ChunkBody
 	}
 }
 

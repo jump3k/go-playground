@@ -32,7 +32,7 @@ func newStreamSource(pub *publisher, streamKey string, ssMgr *streamSourceMgr) *
 }
 
 func (ss *streamSource) doPublishing() error {
-	err := ss.publisher.publishingCycle()
+	err := ss.publisher.publishingCycle(ss)
 	return err
 }
 

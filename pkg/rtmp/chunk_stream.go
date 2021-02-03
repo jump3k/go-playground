@@ -6,8 +6,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-
-	"playground/pkg/av"
 )
 
 type ChunkBasicHeader struct {
@@ -90,9 +88,8 @@ func NewUserControlMessage(eventType, buflen uint32) *ChunkStream {
 	return cs
 }
 
-func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
-	pkt := &av.Packet{}
-
+/*
+func (cs *ChunkStream) decodeAVChunkStream(pkt *av.Packet) *av.Packet {
 	switch cs.MsgTypeID {
 	case MsgAudioMessage:
 		pkt.IsAudio = true
@@ -107,6 +104,7 @@ func (cs *ChunkStream) decodeAVChunkStream() *av.Packet {
 
 	return pkt
 }
+*/
 
 //read one chunk stream fully
 func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
