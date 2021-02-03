@@ -175,19 +175,15 @@ func (c *Conn) Serve() {
 			return
 		}
 
-		sub := newSubscriber(c)
+		sub := newSubscriber(c, 1024) //TODO: avQueueSize use config's value
 		ss := val.(*streamSource)
 		if !ss.addSubscriber(sub) {
 			logger.Error("already subscribe")
 			return
 		}
 
-		select {
-		case <-ss.stopPublish: // publisher stop publishing
-			ss.delSubscriber(sub)
-			return
-		case <-sub.stopSub: // subscriber stop play
-			ss.delSubscriber(sub)
+		defer ss.delSubscriber(sub)
+		if err := ss.doPlaying(sub); err != nil {
 			return
 		}
 	}

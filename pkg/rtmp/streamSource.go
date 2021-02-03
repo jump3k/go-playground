@@ -1,6 +1,7 @@
 package rtmp
 
 import (
+	"playground/pkg/av"
 	"sync"
 	"time"
 )
@@ -36,9 +37,9 @@ func (ss *streamSource) doPublishing() error {
 	return err
 }
 
-func (ss *streamSource) doPlaying() error {
-	//TODO:
-	return nil
+func (ss *streamSource) doPlaying(sub *subscriber) error {
+	err := sub.playingCycle(ss)
+	return err
 }
 
 func (ss *streamSource) setPublisher(pub *publisher) *streamSource {
@@ -81,6 +82,13 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 
 	delete(ss.subscribers, sub.rtmpConn.RemoteAddr().String())
 	return true
+}
+
+func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
+	for _, sub := range ss.subscribers {
+		sub.avPktEnQueue(pkt)
+		sub.recordTimeStamp(cs)
+	}
 }
 
 type streamSourceMgr struct {

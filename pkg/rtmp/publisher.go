@@ -31,7 +31,6 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 func (p *publisher) publishingCycle(ss *streamSource) error {
 	// start to recv av data
 	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
-	avPkt := new(av.Packet)
 
 loopRecvAVChunkStream:
 	for {
@@ -42,6 +41,7 @@ loopRecvAVChunkStream:
 		}
 		p.logger.WithField("event", "recv av chunk stream").Tracef("data: %s", fmt.Sprintf("%#v", cs))
 
+		avPkt := new(av.Packet)
 		switch cs.MsgTypeID {
 		case MsgAudioMessage:
 			avPkt.IsAudio = true
@@ -55,6 +55,8 @@ loopRecvAVChunkStream:
 
 		avPkt.StreamID = cs.MsgStreamID
 		avPkt.Data = cs.ChunkBody
+
+		ss.dispatchAvPkt(cs, avPkt) //dispatch av pkt
 	}
 }
 
