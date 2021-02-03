@@ -19,7 +19,7 @@ func initLogger(config *rtmp.Config) (*logrus.Logger, error) {
 		LogPath:         "logs/error.log",
 		RotationTime:    24 * time.Hour,
 		ReverseDays:     7,
-		Level:           "TRACE",
+		Level:           "INFO",
 		Format:          "text",
 		UseStderr:       true,
 		SetRepoerCaller: false,

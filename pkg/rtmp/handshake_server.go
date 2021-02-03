@@ -42,9 +42,9 @@ func (c *Conn) serverHandshake() error {
 		return fmt.Errorf("rtmp: handshake version=%d invalid", c0c1[0])
 	}
 
-	cliVer := u32BE(c1[4:8])
+	cliVer := byteSliceAsUint(c1[4:8], true)
 	if cliVer != 0 {
-		cliTime := u32BE(c1[0:4])
+		cliTime := byteSliceAsUint(c1[0:4], true)
 		srvTime, srvVer := cliTime, uint32(0x0d0e0a0d)
 
 		if ok, digest := handshakeParse1(c1, hsClientPartialKey, hsServerFullKey); !ok {
@@ -81,27 +81,6 @@ func (c *Conn) serverHandshake() error {
 	c.logger.WithField("event", "read c2").Info("")
 
 	return nil
-}
-
-func u32BE(b []byte) (i uint32) {
-	i = uint32(b[0])
-	i <<= 8
-
-	i |= uint32(b[1])
-	i <<= 8
-
-	i |= uint32(b[2])
-	i <<= 8
-
-	i |= uint32(b[3])
-	return
-}
-
-func putU32BE(b []byte, v uint32) {
-	b[0] = byte(v >> 24)
-	b[1] = byte(v >> 16)
-	b[2] = byte(v >> 8)
-	b[3] = byte(v)
 }
 
 func handshakeParse1(p []byte, peerKey []byte, key []byte) (ok bool, digest []byte) {
@@ -152,8 +131,9 @@ func handshakeCreate01(p []byte, time uint32, ver uint32, key []byte) {
 	p[0] = 3
 	p1 := p[1:]
 	rand.Read(p1[8:])
-	putU32BE(p1[0:4], time)
-	putU32BE(p1[4:8], ver)
+
+	uintAsbyteSlice(time, p1[0:4], true)
+	uintAsbyteSlice(ver, p1[1:8], true)
 
 	gap := handshakeCalcDigestPos(p1, 8)
 	digest := handshakeMakeDigest(key, p1, gap)

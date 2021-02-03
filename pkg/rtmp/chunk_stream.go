@@ -59,7 +59,8 @@ func NewProtolControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) 
 		ChunkBody: make([]byte, length),
 	}
 
-	putU32BE(cs.ChunkBody[:length], value)
+	//putU32BE(cs.ChunkBody[:length], value)
+	uintAsbyteSlice(value, cs.ChunkBody[:4], true)
 
 	return cs
 }
