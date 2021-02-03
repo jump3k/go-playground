@@ -74,19 +74,19 @@ func (c *Conn) serverHandshake() error {
 
 func complexHandshakeParseC1(p []byte, peerkey []byte, key []byte) (ok bool, digest []byte) {
 	var pos int
-	if pos = hsFindDigest(p, peerkey, 772); pos == -1 {
-		if pos = hsFindDigest(p, peerkey, 8); pos == -1 {
+	if pos = complexHandshakeFindDigest(p, peerkey, 772); pos == -1 {
+		if pos = complexHandshakeFindDigest(p, peerkey, 8); pos == -1 {
 			return
 		}
 	}
 	ok = true
-	digest = hsMakeDigest(key, p[pos:pos+32], -1)
+	digest = complexHandshakeMakeDigest(key, p[pos:pos+32], -1)
 	return
 }
 
-func hsFindDigest(p []byte, key []byte, base int) int {
-	gap := hsCalcDigestPos(p, base)
-	digest := hsMakeDigest(key, p, gap)
+func complexHandshakeFindDigest(p []byte, key []byte, base int) int {
+	gap := complexHandshakeCalcDigestPos(p, base)
+	digest := complexHandshakeMakeDigest(key, p, gap)
 	if !bytes.Equal(p[gap:gap+32], digest) {
 		return -1
 	}
@@ -94,7 +94,7 @@ func hsFindDigest(p []byte, key []byte, base int) int {
 	return gap
 }
 
-func hsMakeDigest(key []byte, src []byte, gap int) (dst []byte) {
+func complexHandshakeMakeDigest(key []byte, src []byte, gap int) (dst []byte) {
 	h := hmac.New(sha256.New, key)
 	if gap <= 0 {
 		_, _ = h.Write(src)
@@ -105,7 +105,7 @@ func hsMakeDigest(key []byte, src []byte, gap int) (dst []byte) {
 	return h.Sum(nil)
 }
 
-func hsCalcDigestPos(p []byte, base int) (pos int) {
+func complexHandshakeCalcDigestPos(p []byte, base int) (pos int) {
 	for i := 0; i < 4; i++ {
 		pos += int(p[base+i])
 	}
@@ -120,15 +120,15 @@ func complexHandshakeCreateS0S1(p []byte, time uint32, ver uint32, key []byte) {
 	uintAsbyteSlice(time, p1[0:4], true)
 	uintAsbyteSlice(ver, p1[4:8], true)
 
-	gap := hsCalcDigestPos(p1, 8)
-	digest := hsMakeDigest(key, p1, gap)
+	gap := complexHandshakeCalcDigestPos(p1, 8)
+	digest := complexHandshakeMakeDigest(key, p1, gap)
 	copy(p1[gap:], digest)
 }
 
 func complexHandshakeCreateS2(p []byte, key []byte) {
 	rand.Read(p)
 	gap := len(p) - 32
-	digest := hsMakeDigest(key, p, gap)
+	digest := complexHandshakeMakeDigest(key, p, gap)
 	copy(p[gap:], digest)
 }
 
