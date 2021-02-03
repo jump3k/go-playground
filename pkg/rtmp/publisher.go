@@ -8,13 +8,10 @@ import (
 
 type publisher struct {
 	rtmpConn  *Conn
-	SessionID string
 	streamKey string
 
 	demuxer *flv.Demuxer
-
-	ssMgr  *streamSourceMgr
-	logger *logrus.Logger
+	logger  *logrus.Logger
 }
 
 func newPublisher(c *Conn, streamKey string) *publisher {
@@ -22,11 +19,9 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 		rtmpConn:  c,
 		streamKey: streamKey,
 		demuxer:   flv.NewDemuxer(),
-		ssMgr:     c.ssMgr,
 		logger:    c.logger,
 	}
 
-	p.SessionID = genUuid()
 	return p
 }
 
