@@ -339,9 +339,8 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 			c.logger.WithField("event", "decode Play Msg").Info("success")
 		case cmdFCUnpublish, cmdDeleteStream:
 		default:
-			err := fmt.Errorf("unsupport command=%s", cmdStr)
-			c.logger.WithField("event", "parse AMF command").Error(err)
-			return err
+			//err := fmt.Errorf("unsupport command=%s", cmdStr)
+			c.logger.WithField("event", "parse AMF command").Infof(fmt.Sprintf("unsupport command '%s'", cmdStr))
 		}
 	}
 
