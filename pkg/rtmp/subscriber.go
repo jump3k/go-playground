@@ -1,9 +1,11 @@
 package rtmp
 
 import (
+	"encoding/binary"
 	"errors"
 	"playground/pkg/av"
 
+	"github.com/gwuhaolin/livego/protocol/amf"
 	"github.com/sirupsen/logrus"
 )
 
@@ -37,6 +39,7 @@ func newSubscriber(c *Conn, avQueueSize int) *subscriber {
 }
 
 func (s *subscriber) playingCycle(ss *streamSource) error {
+	s.cachePktEnQueue(ss)
 	cs := new(ChunkStream)
 
 	for {
@@ -61,7 +64,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 		}
 
 		s.recordTimeStamp(cs)
-		if err := s.rtmpConn.writeChunStream(cs); err != nil {
+		if err := s.writeAVChunkStream(cs); err != nil {
 			s.stopped = true
 			return err
 		}
@@ -69,7 +72,42 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 	}
 }
 
+func (s *subscriber) writeAVChunkStream(cs *ChunkStream) error {
+	switch cs.MsgTypeID {
+	case MsgAMF3DataMessage, MSGAMF0DataMessage:
+		var err error
+		if cs.ChunkBody, err = amf.MetaDataReform(cs.ChunkBody, amf.DEL); err != nil {
+			return err
+		}
+		cs.MsgLength = uint32(len(cs.ChunkBody))
+	case MsgSetChunkSize:
+		s.rtmpConn.localChunksize = binary.BigEndian.Uint32(cs.ChunkBody)
+	}
+
+	return s.rtmpConn.writeChunStream(cs)
+}
+
+func (s *subscriber) cachePktEnQueue(ss *streamSource) {
+	pkt := ss.cache.metaData.pkt
+	if pkt != nil {
+		s.avPktEnQueue(pkt)
+	}
+
+	pkt = ss.cache.videoSeq.pkt
+	if pkt != nil {
+		s.avPktEnQueue(pkt)
+	}
+
+	pkt = ss.cache.audioSeq.pkt
+	if pkt != nil {
+		s.avPktEnQueue(pkt)
+	}
+
+	//TODO: GOP
+}
+
 func (s *subscriber) avPktEnQueue(pkt *av.Packet) {
+	//s.logger.WithField("event", "avpkt enQueue").Infof("data len: %d", len(pkt.Data))
 	if len(s.avPktQueue) > s.avPktQueueSize-24 {
 		s.dropAvPkt()
 	} else {

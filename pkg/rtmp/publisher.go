@@ -56,6 +56,7 @@ loopRecvAVChunkStream:
 		avPkt.StreamID = cs.MsgStreamID
 		avPkt.Data = cs.ChunkBody
 
+		ss.saveCache(cs, avPkt)     //cache
 		ss.dispatchAvPkt(cs, avPkt) //dispatch av pkt
 	}
 }

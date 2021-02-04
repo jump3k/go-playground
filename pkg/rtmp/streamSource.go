@@ -17,6 +17,7 @@ type streamSource struct {
 	streamKey string
 	sessionID string
 	ssMgr     *streamSourceMgr
+	cache     *Cache
 }
 
 func newStreamSource(pub *publisher, streamKey string, ssMgr *streamSourceMgr) *streamSource {
@@ -27,6 +28,7 @@ func newStreamSource(pub *publisher, streamKey string, ssMgr *streamSourceMgr) *
 		streamKey:   streamKey,
 		sessionID:   genUuid(),
 		ssMgr:       ssMgr,
+		cache:       NewCache(),
 	}
 
 	return ss
@@ -82,6 +84,27 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 
 	delete(ss.subscribers, sub.rtmpConn.RemoteAddr().String())
 	return true
+}
+
+func (ss *streamSource) saveCache(cs *ChunkStream, pkt *av.Packet) {
+	switch {
+	case pkt.IsMetaData:
+		ss.cache.metaData.pkt = pkt
+	case pkt.IsAudio:
+		audioHdr, ok := pkt.Header.(av.AudioPacketHeader)
+		if ok {
+			if audioHdr.SoundFormat() == av.SOUND_AAC && audioHdr.AACPacketType() == av.AAC_SEQHDR {
+				ss.cache.audioSeq.pkt = pkt
+			}
+		}
+	case pkt.IsVideo:
+		videoHdr, ok := pkt.Header.(av.VideoPacketHeader)
+		if ok {
+			if videoHdr.IsSeq() {
+				ss.cache.videoSeq.pkt = pkt
+			}
+		}
+	}
 }
 
 func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
