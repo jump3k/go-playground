@@ -99,7 +99,7 @@ func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 			}
 		}
 
-		sub.avPktEnQueue(pkt)
+		sub.writeAvPktCh(pkt)
 		sub.calcBaseTimeStamp()
 	}
 }
@@ -107,17 +107,17 @@ func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 func (ss *streamSource) sendCache(sub *subscriber) error {
 	metaData := ss.cache.metaData
 	if metaData.full && metaData.pkt != nil {
-		sub.avPktEnQueue(metaData.pkt)
+		sub.writeAvPktCh(metaData.pkt)
 	}
 
 	videoSeq := ss.cache.videoSeq
 	if videoSeq.full && videoSeq.pkt != nil {
-		sub.avPktEnQueue(videoSeq.pkt)
+		sub.writeAvPktCh(videoSeq.pkt)
 	}
 
 	audioSeq := ss.cache.audioSeq
 	if audioSeq.full && audioSeq.pkt != nil {
-		sub.avPktEnQueue(audioSeq.pkt)
+		sub.writeAvPktCh(audioSeq.pkt)
 	}
 
 	//TODO: GOP

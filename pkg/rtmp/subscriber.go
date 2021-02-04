@@ -68,7 +68,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 			s.stopped = true
 			return err
 		}
-		s.logger.WithField("event", "SendAvPkt").Trace("success")
+		s.logger.WithField("event", "SendAvPkt").Infof("pkt: %+v", pkt)
 	}
 }
 
@@ -87,7 +87,7 @@ func (s *subscriber) writeAVChunkStream(cs *ChunkStream) error {
 	return s.rtmpConn.writeChunStream(cs)
 }
 
-func (s *subscriber) avPktEnQueue(pkt *av.Packet) {
+func (s *subscriber) writeAvPktCh(pkt *av.Packet) {
 	//s.logger.WithField("event", "avpkt enQueue").Infof("data len: %d", len(pkt.Data))
 	if len(s.avPktQueue) > s.avPktQueueSize-24 {
 		s.dropAvPkt()
