@@ -86,6 +86,10 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 
 func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 	for _, sub := range ss.subscribers {
+		if sub.stopped {
+			continue
+		}
+
 		sub.avPktEnQueue(pkt)
 		sub.recordTimeStamp(cs)
 	}

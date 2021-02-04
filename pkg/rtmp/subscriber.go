@@ -11,7 +11,7 @@ type subscriber struct {
 	rtmpConn  *Conn
 	streamKey string
 
-	stopSub <-chan bool
+	stopped bool
 	subType string // "gerneral"
 	logger  *logrus.Logger
 
@@ -28,7 +28,6 @@ func newSubscriber(c *Conn, avQueueSize int) *subscriber {
 		rtmpConn:       c,
 		subType:        "gerneral",
 		logger:         c.logger,
-		stopSub:        make(<-chan bool, 1),
 		avPktQueue:     make(chan *av.Packet, avQueueSize),
 		avPktQueueSize: avQueueSize,
 	}
@@ -43,6 +42,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 	for {
 		pkt, ok := <-s.avPktQueue
 		if !ok {
+			s.stopped = true
 			return errors.New("closed")
 		}
 
@@ -61,6 +61,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 		}
 
 		if err := s.rtmpConn.writeChunStream(cs); err != nil {
+			s.stopped = true
 			return err
 		}
 		s.logger.WithField("event", "SendAvPkt").Trace("success")
