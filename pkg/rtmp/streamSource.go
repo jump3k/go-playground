@@ -86,37 +86,45 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 	return true
 }
 
-func (ss *streamSource) saveCache(cs *ChunkStream, pkt *av.Packet) {
-	switch {
-	case pkt.IsMetaData:
-		ss.cache.metaData.pkt = pkt
-	case pkt.IsAudio:
-		audioHdr, ok := pkt.Header.(av.AudioPacketHeader)
-		if ok {
-			if audioHdr.SoundFormat() == av.SOUND_AAC && audioHdr.AACPacketType() == av.AAC_SEQHDR {
-				ss.cache.audioSeq.pkt = pkt
-			}
-		}
-	case pkt.IsVideo:
-		videoHdr, ok := pkt.Header.(av.VideoPacketHeader)
-		if ok {
-			if videoHdr.IsSeq() {
-				ss.cache.videoSeq.pkt = pkt
-			}
-		}
-	}
-}
-
 func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 	for _, sub := range ss.subscribers {
 		if sub.stopped {
 			continue
 		}
 
+		if !sub.cacheSend {
+			sub.cacheSend = true
+			if err := ss.sendCache(sub); err != nil {
+				continue
+			}
+		}
+
 		sub.avPktEnQueue(pkt)
 		sub.calcBaseTimeStamp()
 	}
 }
+
+func (ss *streamSource) sendCache(sub *subscriber) error {
+	metaData := ss.cache.metaData
+	if metaData.full && metaData.pkt != nil {
+		sub.avPktEnQueue(metaData.pkt)
+	}
+
+	videoSeq := ss.cache.videoSeq
+	if videoSeq.full && videoSeq.pkt != nil {
+		sub.avPktEnQueue(videoSeq.pkt)
+	}
+
+	audioSeq := ss.cache.audioSeq
+	if audioSeq.full && audioSeq.pkt != nil {
+		sub.avPktEnQueue(audioSeq.pkt)
+	}
+
+	//TODO: GOP
+
+	return nil
+}
+
 
 type streamSourceMgr struct {
 	streamMap sync.Map //<StreamKey, StreamSource>

@@ -20,6 +20,7 @@ type subscriber struct {
 	avPktQueue     chan *av.Packet
 	avPktQueueSize int //av packet buffer size
 
+	cacheSend bool
 	baseTimeStamp      uint32
 	lastAudioTimeStamp uint32
 	lastVideoTimeStamp uint32
@@ -39,7 +40,6 @@ func newSubscriber(c *Conn, avQueueSize int) *subscriber {
 }
 
 func (s *subscriber) playingCycle(ss *streamSource) error {
-	s.cachePktEnQueue(ss)
 	cs := new(ChunkStream)
 
 	for {
@@ -85,25 +85,6 @@ func (s *subscriber) writeAVChunkStream(cs *ChunkStream) error {
 	}
 
 	return s.rtmpConn.writeChunStream(cs)
-}
-
-func (s *subscriber) cachePktEnQueue(ss *streamSource) {
-	pkt := ss.cache.metaData.pkt
-	if pkt != nil {
-		s.avPktEnQueue(pkt)
-	}
-
-	pkt = ss.cache.videoSeq.pkt
-	if pkt != nil {
-		s.avPktEnQueue(pkt)
-	}
-
-	pkt = ss.cache.audioSeq.pkt
-	if pkt != nil {
-		s.avPktEnQueue(pkt)
-	}
-
-	//TODO: GOP
 }
 
 func (s *subscriber) avPktEnQueue(pkt *av.Packet) {
