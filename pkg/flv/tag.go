@@ -116,7 +116,7 @@ func (t *Tag) IsKeyFrame() bool {
 	return t.mediaTag.FrameType == av.KEY_FRAME
 }
 
-func (t *Tag) IsSeqHdr() bool {
+func (t *Tag) IsSeq() bool {
 	return t.IsKeyFrame() && t.mediaTag.AvcPacketType == av.AVC_SEQHDR
 }
 

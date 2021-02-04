@@ -63,21 +63,47 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 		if err := s.rtmpConn.writeChunStream(cs); err != nil {
 			return err
 		}
+		s.logger.WithField("event", "SendAvPkt").Trace("success")
 	}
 }
 
 func (s *subscriber) avPktEnQueue(pkt *av.Packet) {
 	if len(s.avPktQueue) > s.avPktQueueSize-24 {
-		//TODO: DROP
+		s.dropAvPkt()
 	} else {
 		s.avPktQueue <- pkt
 	}
 }
 
-/*
-func (s *subscriber) avPktDeQueue() {
+func (s *subscriber) dropAvPkt() {
+	s.logger.WithField("event", "dropAvPkt").Infof("subscriber: %s", s.rtmpConn.RemoteAddr().String())
+	for i := 0; i < s.avPktQueueSize-84; i++ {
+		pkt, ok := <-s.avPktQueue
+		if !ok {
+			continue
+		}
+
+		switch {
+		case pkt.IsAudio:
+			if len(s.avPktQueue) > s.avPktQueueSize-2 {
+				s.logger.WithField("event", "dropAvPkt").Infof("drop audio pkt")
+				<-s.avPktQueue
+			} else {
+				s.avPktQueue <- pkt //enqueu again
+			}
+		case pkt.IsVideo:
+			vPkt, ok := pkt.Header.(av.VideoPacketHeader)
+			if ok && (vPkt.IsSeq() || vPkt.IsKeyFrame()) {
+				s.avPktQueue <- pkt
+			}
+
+			if len(s.avPktQueue) > s.avPktQueueSize-10 {
+				s.logger.WithField("event", "dropAvPkt").Infof("drop audio pkt")
+				<-s.avPktQueue
+			}
+		}
+	}
 }
-*/
 
 func (s *subscriber) recordTimeStamp(cs *ChunkStream) {
 	switch cs.MsgTypeID {
