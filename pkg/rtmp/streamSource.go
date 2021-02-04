@@ -91,7 +91,7 @@ func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 		}
 
 		sub.avPktEnQueue(pkt)
-		sub.recordTimeStamp(cs)
+		sub.calcBaseTimeStamp()
 	}
 }
 

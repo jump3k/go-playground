@@ -49,7 +49,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 		cs.ChunkBody = pkt.Data
 		cs.MsgLength = uint32(len(pkt.Data))
 		cs.MsgStreamID = pkt.StreamID
-		cs.TimeStamp += s.baseTimeStamp
+		cs.TimeStamp += s.getBaseTimeStamp()
 
 		switch {
 		case pkt.IsVideo:
@@ -60,6 +60,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 			cs.MsgTypeID = MSGAMF0DataMessage
 		}
 
+		s.recordTimeStamp(cs)
 		if err := s.rtmpConn.writeChunStream(cs); err != nil {
 			s.stopped = true
 			return err
@@ -113,10 +114,16 @@ func (s *subscriber) recordTimeStamp(cs *ChunkStream) {
 	case MsgAudioMessage:
 		s.lastAudioTimeStamp = cs.TimeStamp
 	}
+}
 
+func (s *subscriber) calcBaseTimeStamp() {
 	if s.lastAudioTimeStamp > s.lastVideoTimeStamp {
-		s.baseTimeStamp = s.lastAudioTimeStamp //set max
+		s.baseTimeStamp = s.lastAudioTimeStamp
 	} else {
 		s.baseTimeStamp = s.lastVideoTimeStamp
 	}
+}
+
+func (s *subscriber) getBaseTimeStamp() uint32 {
+	return s.baseTimeStamp
 }
