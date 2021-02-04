@@ -52,6 +52,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 		cs.ChunkBody = pkt.Data
 		cs.MsgLength = uint32(len(pkt.Data))
 		cs.MsgStreamID = pkt.StreamID
+		cs.TimeStamp = pkt.TimeStamp
 		cs.TimeStamp += s.getBaseTimeStamp()
 
 		switch {
@@ -68,7 +69,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 			s.stopped = true
 			return err
 		}
-		s.logger.WithField("event", "SendAvPkt").Infof("pkt: %+v", pkt)
+		s.logger.WithField("event", "SendAvPkt").Tracef("pkt: %+v", pkt)
 	}
 }
 

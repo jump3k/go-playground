@@ -55,6 +55,11 @@ loopRecvAVChunkStream:
 
 		avPkt.StreamID = cs.MsgStreamID
 		avPkt.Data = cs.ChunkBody
+		avPkt.TimeStamp = cs.TimeStamp
+
+		if err := p.demuxer.DemuxHdr(avPkt); err != nil { // flv demux av pkt
+			p.logger.WithField("event", "flv Demux Hdr").Error(err)
+		}
 
 		ss.cache.Write(avPkt)
 		ss.dispatchAvPkt(cs, avPkt) //dispatch av pkt
