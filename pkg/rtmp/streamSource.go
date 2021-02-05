@@ -95,37 +95,10 @@ func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 			continue
 		}
 
-		if !sub.cacheSend {
-			sub.cacheSend = true
-			if err := ss.sendCache(sub); err != nil {
-				continue
-			}
-		}
-
+		sub.sendCachePkt(ss.cache)
 		sub.writeAvPktCh(pkt)
 		sub.calcBaseTimeStamp()
 	}
-}
-
-func (ss *streamSource) sendCache(sub *subscriber) error {
-	metaData := ss.cache.metaData
-	if metaData.full && metaData.pkt != nil {
-		sub.writeAvPktCh(metaData.pkt)
-	}
-
-	videoSeq := ss.cache.videoSeq
-	if videoSeq.full && videoSeq.pkt != nil {
-		sub.writeAvPktCh(videoSeq.pkt)
-	}
-
-	audioSeq := ss.cache.audioSeq
-	if audioSeq.full && audioSeq.pkt != nil {
-		sub.writeAvPktCh(audioSeq.pkt)
-	}
-
-	//TODO: GOP
-
-	return nil
 }
 
 type streamSourceMgr struct {

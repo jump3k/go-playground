@@ -19,7 +19,7 @@ func (c *SpecialCache) Write(pkt *av.Packet) {
 }
 
 type Cache struct {
-	//gop
+	//TODO:gop
 	videoSeq *SpecialCache
 	audioSeq *SpecialCache
 	metaData *SpecialCache

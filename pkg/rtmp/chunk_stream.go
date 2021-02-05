@@ -324,10 +324,10 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 		if _, err := c.readWriter.Write(buf); err != nil { //write rtmp chunk body
 			return err
 		}
+	}
 
-		if err := c.readWriter.Flush(); err != nil {
-			return err
-		}
+	if err := c.readWriter.Flush(); err != nil {
+		return err
 	}
 
 	return nil

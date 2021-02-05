@@ -10,8 +10,7 @@ import (
 )
 
 type subscriber struct {
-	rtmpConn  *Conn
-	streamKey string
+	rtmpConn *Conn
 
 	stopped bool
 	subType string // "gerneral"
@@ -20,7 +19,7 @@ type subscriber struct {
 	avPktQueue     chan *av.Packet
 	avPktQueueSize int //av packet buffer size
 
-	cacheSend bool
+	cacheSend          bool
 	baseTimeStamp      uint32
 	lastAudioTimeStamp uint32
 	lastVideoTimeStamp uint32
@@ -35,8 +34,30 @@ func newSubscriber(c *Conn, avQueueSize int) *subscriber {
 		avPktQueueSize: avQueueSize,
 	}
 
-	sub.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
 	return sub
+}
+
+func (s *subscriber) sendCachePkt(cache *Cache) {
+	if s.cacheSend {
+		return
+	}
+
+	metaData := cache.metaData
+	if metaData.full && metaData.pkt != nil {
+		s.writeAvPktCh(metaData.pkt)
+	}
+
+	videoSeq := cache.videoSeq
+	if videoSeq.full && videoSeq.pkt != nil {
+		s.writeAvPktCh(videoSeq.pkt)
+	}
+
+	audioSeq := cache.audioSeq
+	if audioSeq.full && audioSeq.pkt != nil {
+		s.writeAvPktCh(audioSeq.pkt)
+	}
+
+	s.cacheSend = true
 }
 
 func (s *subscriber) playingCycle(ss *streamSource) error {
@@ -69,7 +90,7 @@ func (s *subscriber) playingCycle(ss *streamSource) error {
 			s.stopped = true
 			return err
 		}
-		s.logger.WithField("event", "SendAvPkt").Tracef("pkt: %+v", pkt)
+		//s.logger.WithField("event", "SendAvPkt").Tracef("pkt: %+v", pkt)
 	}
 }
 
@@ -98,7 +119,7 @@ func (s *subscriber) writeAvPktCh(pkt *av.Packet) {
 }
 
 func (s *subscriber) dropAvPkt() {
-	s.logger.WithField("event", "dropAvPkt").Infof("subscriber: %s", s.rtmpConn.RemoteAddr().String())
+	//s.logger.WithField("event", "dropAvPkt").Infof("subscriber: %s", s.rtmpConn.RemoteAddr().String())
 	for i := 0; i < s.avPktQueueSize-84; i++ {
 		pkt, ok := <-s.avPktQueue
 		if !ok {
