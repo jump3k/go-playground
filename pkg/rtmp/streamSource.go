@@ -87,6 +87,9 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 }
 
 func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
+	ss.addSubMux.Lock()
+	defer ss.addSubMux.Unlock() //TODO: lock big
+
 	for _, sub := range ss.subscribers {
 		if sub.stopped {
 			continue
@@ -124,7 +127,6 @@ func (ss *streamSource) sendCache(sub *subscriber) error {
 
 	return nil
 }
-
 
 type streamSourceMgr struct {
 	streamMap sync.Map //<StreamKey, StreamSource>

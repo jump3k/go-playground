@@ -1,7 +1,7 @@
 package rtmp
 
 import (
-	"fmt"
+	//"fmt"
 
 	"github.com/sirupsen/logrus"
 
@@ -39,7 +39,7 @@ loopRecvAVChunkStream:
 			p.logger.WithField("event", "recv av chunk stream").Error(err)
 			return err
 		}
-		p.logger.WithField("event", "recv av chunk stream").Tracef("data: %s", fmt.Sprintf("%#v", cs))
+		//p.logger.WithField("event", "recv av chunk stream").Tracef("data: %s", fmt.Sprintf("%#v", cs))
 
 		avPkt := new(av.Packet)
 		switch cs.MsgTypeID {
