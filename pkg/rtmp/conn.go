@@ -53,7 +53,8 @@ type Conn struct {
 
 	handleCommandMessageDone bool
 
-	chunks map[uint32]*ChunkStream //<CSID, ChunkStream>
+	chunks      map[uint32]*ChunkStream //<CSID, ChunkStream>
+	basicHdrBuf []byte                  //rtmp chunk basic header, at most 3 bytes
 
 	amfDecoder *amf.Decoder
 	amfEncoder *amf.Encoder
@@ -128,6 +129,7 @@ func (c *Conn) Serve() {
 	logger.Info("success")
 
 	logger = c.logger.WithFields(logrus.Fields{"event": "handleCommandMessage"})
+	c.basicHdrBuf = make([]byte, 3)
 	if err := c.handleCommandMessage(); err != nil {
 		logger.Error(err)
 		return
@@ -216,11 +218,10 @@ func (c *Conn) Handshake() error {
 }
 
 func (c *Conn) handleCommandMessage() error {
-	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
 	logger := c.logger.WithFields(logrus.Fields{"event": "recv chunk stream"})
 
 	for {
-		cs, err := c.readChunkStream(basicHdrBuf)
+		cs, err := c.readChunkStream(c.basicHdrBuf)
 		if err != nil {
 			logger.Error(err)
 			return err
@@ -392,7 +393,7 @@ func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	// WindowAcknowledgement Size
 	respCs := NewProtolControlMessage(MsgWindowAcknowledgementSize, 4, c.localWindowAckSize)
-	if err := c.writeChunStream(respCs); err != nil {
+	if err := c.writeChunkStream(respCs); err != nil {
 		c.logger.WithField("event", "Set WindowAckSize Message").Error(err)
 		return err
 	}
@@ -401,7 +402,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	// Set Peer Bandwidth
 	respCs = NewProtolControlMessage(MsgSetPeerBandwidth, 5, 2500000)
 	respCs.ChunkBody[4] = 2
-	if err := c.writeChunStream(respCs); err != nil {
+	if err := c.writeChunkStream(respCs); err != nil {
 		c.logger.WithField("event", "Set Peer Bandwidth").Error(err)
 		return err
 	}
@@ -409,7 +410,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 
 	// set chunk size
 	respCs = NewProtolControlMessage(MsgSetChunkSize, 4, c.localChunksize)
-	if err := c.writeChunStream(respCs); err != nil {
+	if err := c.writeChunkStream(respCs); err != nil {
 		c.logger.WithField("event", "Set Chunk Size").Error(err)
 		return err
 	}
@@ -473,7 +474,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	for i := 0; i < 4; i++ {
 		cs1.ChunkBody[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
 	}
-	if err := c.writeChunStream(cs1); err != nil {
+	if err := c.writeChunkStream(cs1); err != nil {
 		return errors.Wrap(err, "send user control message streamIsRecorded")
 	}
 
@@ -482,7 +483,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	for i := 0; i < 4; i++ {
 		cs2.ChunkBody[i+2] = byte(1 >> uint32((3-i)*8) & 0xff)
 	}
-	if err := c.writeChunStream(cs2); err != nil {
+	if err := c.writeChunkStream(cs2); err != nil {
 		return errors.Wrap(err, "send user control message streamBegin")
 	}
 
@@ -590,7 +591,7 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 		msgHdrBuf: make([]byte, 11),
 	}
 
-	if err := c.writeChunStream(&cs); err != nil {
+	if err := c.writeChunkStream(&cs); err != nil {
 		return err
 	}
 

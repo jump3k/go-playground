@@ -286,7 +286,7 @@ func (c *Conn) readChunkMessageBody(cs *ChunkStream) error {
 }
 
 // write one chunk stream fully
-func (c *Conn) writeChunStream(cs *ChunkStream) error {
+func (c *Conn) writeChunkStream(cs *ChunkStream) error {
 	switch cs.MsgTypeID {
 	case MsgAudioMessage:
 		cs.Csid = 4
@@ -307,7 +307,7 @@ func (c *Conn) writeChunStream(cs *ChunkStream) error {
 			cs.Fmt = 3
 		}
 
-		if err := c.writeHeader(cs); err != nil { //write rtmp chunk header
+		if err := c.writeChunkHeader(cs); err != nil { //write rtmp chunk header
 			return err
 		}
 
@@ -357,7 +357,7 @@ func (c *Conn) ack(size uint32) {
 	c.ackSeqNumber += size
 	if c.ackSeqNumber >= c.remoteWindowAckSize { //超过窗口通告大小，回复ACK
 		cs := NewProtolControlMessage(MsgAcknowledgement, 4, c.ackSeqNumber)
-		if err := c.writeChunStream(cs); err != nil {
+		if err := c.writeChunkStream(cs); err != nil {
 			c.logger.WithFields(logrus.Fields{"event": "send ACK"}).Error(err)
 		}
 
@@ -365,38 +365,39 @@ func (c *Conn) ack(size uint32) {
 	}
 }
 
-func (c *Conn) writeHeader(cs *ChunkStream) error {
-	// basic header
+func (c *Conn) writeChunkHeader(cs *ChunkStream) error {
+	// write basic header
 	h := uint32(cs.Fmt) << 6
-	basicHdrWBuf := make([]byte, 2)
 	switch {
 	case cs.Csid < 64:
 		h |= cs.Csid
-		if err := c.writeUint(h, basicHdrWBuf[0:1], false); err != nil {
+		if err := c.writeUint(h, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
 	case cs.Csid-64 < 256:
 		h |= 0
-		if err := c.writeUint(h, basicHdrWBuf[0:1], false); err != nil {
+		if err := c.writeUint(h, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
 
-		if err := c.writeUint(cs.Csid-64, basicHdrWBuf[0:1], false); err != nil {
+		if err := c.writeUint(cs.Csid-64, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
 	case cs.Csid-64 < 65536:
 		h |= 1
-		if err := c.writeUint(h, basicHdrWBuf[0:1], false); err != nil {
+		if err := c.writeUint(h, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
 
-		if err := c.writeUint(cs.Csid-64, basicHdrWBuf[0:2], false); err != nil {
+		if err := c.writeUint(cs.Csid-64, c.basicHdrBuf[0:2], false); err != nil {
 			return err
 		}
 	}
 
-	// message header
-	msgHdrWBuf := make([]byte, 11)
+	// write message header
+	if cs.msgHdrBuf == nil {
+		cs.msgHdrBuf = make([]byte, 11)
+	}
 	ts := cs.TimeStamp
 	if cs.Fmt == 3 {
 		goto END
@@ -405,7 +406,7 @@ func (c *Conn) writeHeader(cs *ChunkStream) error {
 	if cs.TimeStamp > 0xffffff {
 		ts = 0xffffff
 	}
-	if err := c.writeUint(ts, msgHdrWBuf[0:3], true); err != nil {
+	if err := c.writeUint(ts, cs.msgHdrBuf[0:3], true); err != nil {
 		return err
 	}
 
@@ -416,23 +417,23 @@ func (c *Conn) writeHeader(cs *ChunkStream) error {
 	if cs.MsgLength > 0xffffff {
 		return fmt.Errorf("length=%d", cs.MsgLength)
 	}
-	if err := c.writeUint(cs.MsgLength, msgHdrWBuf[0:3], true); err != nil {
+	if err := c.writeUint(cs.MsgLength, cs.msgHdrBuf[0:3], true); err != nil {
 		return err
 	}
-	if err := c.writeUint(uint32(cs.MsgTypeID), msgHdrWBuf[0:1], true); err != nil {
+	if err := c.writeUint(uint32(cs.MsgTypeID), cs.msgHdrBuf[0:1], true); err != nil {
 		return err
 	}
 
 	if cs.Fmt == 1 {
 		goto END
 	}
-	if err := c.writeUint(cs.MsgStreamID, msgHdrWBuf[0:4], false); err != nil {
+	if err := c.writeUint(cs.MsgStreamID, cs.msgHdrBuf[0:4], false); err != nil {
 		return err
 	}
 
 END:
 	if ts > 0xffffff {
-		if err := c.writeUint(cs.TimeStamp, msgHdrWBuf[0:4], true); err != nil {
+		if err := c.writeUint(cs.TimeStamp, cs.msgHdrBuf[0:4], true); err != nil {
 			return err
 		}
 	}

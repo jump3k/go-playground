@@ -106,7 +106,7 @@ func (s *subscriber) writeAVChunkStream(cs *ChunkStream) error {
 		s.rtmpConn.localChunksize = binary.BigEndian.Uint32(cs.ChunkBody)
 	}
 
-	return s.rtmpConn.writeChunStream(cs)
+	return s.rtmpConn.writeChunkStream(cs)
 }
 
 func (s *subscriber) writeAvPktCh(pkt *av.Packet) {
