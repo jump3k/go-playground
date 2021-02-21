@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,10 +15,6 @@ import (
 	"github.com/gwuhaolin/livego/protocol/amf"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-)
-
-var (
-	reTcUrl = regexp.MustCompile(`rtmp\:\/\/([^\/\:]+)(\:([^\/]+))?\/([^\?]+)(\?vhost=([^\/]+))?`)
 )
 
 type Conn struct {
