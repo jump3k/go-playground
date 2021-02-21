@@ -22,7 +22,7 @@ func initLogger(config *rtmp.Config) (*logrus.Logger, error) {
 		Level:           "INFO",
 		Format:          "text",
 		UseStderr:       true,
-		SetRepoerCaller: false,
+		SetRepoerCaller: true,
 	}).NewLogger()
 }
 

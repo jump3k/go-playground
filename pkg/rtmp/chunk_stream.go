@@ -337,10 +337,10 @@ func (c *Conn) onReadChunkStreamSucc(cs *ChunkStream) {
 	switch cs.MsgTypeID {
 	case MsgSetChunkSize:
 		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkBody)
-		c.logger.WithFields(logrus.Fields{"event": "save remoteChunkSize", "data": c.remoteChunkSize}).Info("")
+		c.logger.WithFields(logrus.Fields{"event": "save remoteChunkSize", "data": c.remoteChunkSize}).Trace("")
 	case MsgWindowAcknowledgementSize:
 		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkBody)
-		c.logger.WithFields(logrus.Fields{"event": "save remoteWindowAckSize", "data": c.remoteWindowAckSize}).Info("")
+		c.logger.WithFields(logrus.Fields{"event": "save remoteWindowAckSize", "data": c.remoteWindowAckSize}).Trace("")
 	default:
 	}
 

@@ -121,7 +121,7 @@ func (c *Conn) Serve() {
 		logger.Error(err)
 		return
 	}
-	logger.Info("success")
+	logger.Trace("success")
 
 	logger = c.logger.WithFields(logrus.Fields{"event": "handleCommandMessage"})
 	c.basicHdrBuf = make([]byte, 3)
@@ -129,16 +129,15 @@ func (c *Conn) Serve() {
 		logger.Error(err)
 		return
 	}
-	logger.Info("success")
+	logger.Trace("success")
 
 	logger = c.logger.WithFields(logrus.Fields{"event": "discover tcUrl"})
 	if err := c.discoverTcUrl(); err != nil {
 		logger.Error(err)
 		return
 	}
-
 	c.streamKey = genStreamKey(c.vhost, c.appName, c.streamName)
-	logger.WithFields(logrus.Fields{"vhost": c.vhost, "app": c.appName, "stream": c.streamName, "rawQuery": c.rawQuery, "streamKey": c.streamKey}).Info("")
+	logger.WithFields(logrus.Fields{"vhost": c.vhost, "app": c.appName, "stream": c.streamName, "rawQuery": c.rawQuery, "streamKey": c.streamKey}).Trace("")
 
 	if c.isPublisher { // publish
 		logger = c.logger.WithFields(logrus.Fields{"event": "publish"})
@@ -222,7 +221,7 @@ func (c *Conn) handleCommandMessage() error {
 			logger.Error(err)
 			return err
 		}
-		logger.WithField("data", fmt.Sprintf("%#v", cs)).Info("")
+		logger.WithField("data", fmt.Sprintf("%#v", cs)).Trace("")
 
 		switch cs.MsgTypeID {
 		case MsgAMF0CommandMessage, MsgAMF3CommandMessage:
@@ -342,7 +341,7 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 
 			c.handleCommandMessageDone = true
 			c.isPublisher = true
-			c.logger.WithField("event", "decode Publish Msg").Info("success")
+			c.logger.WithField("event", "decode Publish Msg").Trace("success")
 		case cmdPlay:
 			if err := c.decodePlayCmdMessage(vs[1:]); err != nil {
 				return err
@@ -353,7 +352,7 @@ func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 
 			c.handleCommandMessageDone = true
 			c.isPublisher = false
-			c.logger.WithField("event", "decode Play Msg").Info("success")
+			c.logger.WithField("event", "decode Play Msg").Trace("success")
 		case cmdFCUnpublish, cmdDeleteStream:
 		default:
 			//err := fmt.Errorf("unsupport command=%s", cmdStr)
@@ -399,9 +398,9 @@ func (c *Conn) decodeConnectCmdMessage(vs []interface{}) error {
 
 	c.logger.WithFields(logrus.Fields{
 		"event": "parse connect command msg",
-		"data": fmt.Sprintf("tid: %d, app: '%s', flashVer: '%s', swfUrl: '%s', tcUrl: '%s', objectEncoding: %d",
+		"data": fmt.Sprintf("transactionID: %d, app: '%s', flashVer: '%s', swfUrl: '%s', tcUrl: '%s', objectEncoding: %d",
 			c.transactionID, c.appName, c.flashVer, c.swfUrl, c.tcUrl, c.objectEncoding),
-	}).Info("")
+	}).Trace("")
 
 	return nil
 }
@@ -413,7 +412,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 		c.logger.WithField("event", "Set WindowAckSize Message").Error(err)
 		return err
 	}
-	c.logger.WithField("event", "Set WindowAckSize Message").Info("success")
+	c.logger.WithField("event", "Set WindowAckSize Message").Trace("success")
 
 	// Set Peer Bandwidth
 	respCs = NewProtolControlMessage(MsgSetPeerBandwidth, 5, 2500000)
@@ -422,7 +421,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 		c.logger.WithField("event", "Set Peer Bandwidth").Error(err)
 		return err
 	}
-	c.logger.WithField("event", "Set Peer Bandwidth").Info("success")
+	c.logger.WithField("event", "Set Peer Bandwidth").Trace("success")
 
 	// set chunk size
 	respCs = NewProtolControlMessage(MsgSetChunkSize, 4, c.localChunksize)
@@ -430,7 +429,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 		c.logger.WithField("event", "Set Chunk Size").Error(err)
 		return err
 	}
-	c.logger.WithField("event", "Set Chunk Size").Info("success")
+	c.logger.WithField("event", "Set Chunk Size").Trace("success")
 
 	// NetConnection.Connect.Success
 	resp := make(amf.Object)
@@ -446,7 +445,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 		c.logger.WithField("event", "NetConnection.Connect.Success").Error(err)
 		return err
 	}
-	c.logger.WithField("event", "NetConnection.Connect.Success").Info("success")
+	c.logger.WithField("event", "NetConnection.Connect.Success").Trace("success")
 
 	return nil
 }
