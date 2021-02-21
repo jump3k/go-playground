@@ -39,8 +39,18 @@ type ChunkStream struct {
 	bodyRemain   uint32
 }
 
-func newChunkStream() *ChunkStream {
-	return &ChunkStream{}
+func newChunkStream(fmt uint8, csid uint32) *ChunkStream {
+	cs := &ChunkStream{
+		ChunkHeader: ChunkHeader{
+			ChunkBasicHeader: ChunkBasicHeader{
+				Fmt: fmt,
+				Csid: csid,
+			},
+		},
+		msgHdrBuf: make([]byte, 11),
+	}
+
+	return cs
 }
 
 func NewProtolControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
@@ -89,24 +99,6 @@ func NewUserControlMessage(eventType, buflen uint32) *ChunkStream {
 	return cs
 }
 
-/*
-func (cs *ChunkStream) decodeAVChunkStream(pkt *av.Packet) *av.Packet {
-	switch cs.MsgTypeID {
-	case MsgAudioMessage:
-		pkt.IsAudio = true
-	case MsgVideoMessage:
-		pkt.IsVideo = true
-	case MSGAMF0DataMessage, MsgAMF3DataMessage:
-		pkt.IsMetaData = true
-	}
-
-	pkt.StreamID = cs.MsgStreamID
-	pkt.Data = cs.ChunkBody
-
-	return pkt
-}
-*/
-
 //read one chunk stream fully
 func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 	for {
@@ -117,10 +109,7 @@ func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 
 		cs, ok := c.chunks[csid]
 		if !ok {
-			cs = newChunkStream()
-			cs.Fmt = fmt
-			cs.Csid = csid
-			cs.msgHdrBuf = make([]byte, 11)
+			cs = newChunkStream(fmt, csid)
 			c.chunks[cs.Csid] = cs
 		}
 

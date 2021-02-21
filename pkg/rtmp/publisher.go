@@ -30,11 +30,9 @@ func newPublisher(c *Conn, streamKey string) *publisher {
 
 func (p *publisher) publishingCycle(ss *streamSource) error {
 	// start to recv av data
-	basicHdrBuf := make([]byte, 3) // rtmp chunk basic header, at most 3 bytes
-
 loopRecvAVChunkStream:
 	for {
-		cs, err := p.rtmpConn.readChunkStream(basicHdrBuf)
+		cs, err := p.rtmpConn.readChunkStream(p.rtmpConn.basicHdrBuf)
 		if err != nil {
 			p.logger.WithField("event", "recv av chunk stream").Error(err)
 			return err
