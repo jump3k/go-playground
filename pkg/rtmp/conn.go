@@ -22,21 +22,25 @@ var (
 
 type Conn struct {
 	// constant
-	conn        net.Conn
-	isClient    bool
-	handshakeFn func() error // (*Conn).clientHandshake or serverHandshake
-	ssMgr       *streamSourceMgr
-	//pubMgr      *publisherMgr
+	conn       net.Conn
+	readWriter *readWriter // reader & writer with buffer
+	isClient   bool
 
-	readWriter *readWriter
-	config     *Config
-	logger     *logrus.Logger
+	// config and logger pointer
+	config *Config
+	logger *logrus.Logger
 
+	// rtmp handshake
+	handshakeFn     func() error // (*Conn).clientHandshake or serverHandshake
 	handshakeMutex  sync.Mutex
 	HandshakeStatus uint32
 	handshakeErr    error
 
-	transactionID int
+	// handle command message
+	transactionID            int
+	amfDecoder               *amf.Decoder
+	amfEncoder               *amf.Encoder
+	handleCommandMessageDone bool
 
 	// client connect info
 	appName        string
@@ -45,33 +49,22 @@ type Conn struct {
 	tcUrl          string
 	objectEncoding int
 
+	isPublisher bool             // true: publish  false: play
+	ssMgr       *streamSourceMgr // stream source manager pointer
 	streamName  string
 	domain      string
 	args        string
 	streamKey   string
-	isPublisher bool
 
-	handleCommandMessageDone bool
-
-	chunks      map[uint32]*ChunkStream //<CSID, ChunkStream>
 	basicHdrBuf []byte                  //rtmp chunk basic header, at most 3 bytes
-
-	amfDecoder *amf.Decoder
-	amfEncoder *amf.Encoder
+	chunks      map[uint32]*ChunkStream //<CSID, ChunkStream>
 
 	localChunksize      uint32 // local chunk size
-	localWindowAckSize  uint32 //local window ack size
-	remoteChunkSize     uint32 //peer chunk size
+	localWindowAckSize  uint32 // local window ack size
+	remoteChunkSize     uint32 // peer chunk size
 	remoteWindowAckSize uint32 // peer window ack size
 	ackSeqNumber        uint32 // window ack sequence number
 
-	//rawInput  bytes.Buffer // raw input
-	//input     bytes.Reader // application data waiting to be read, from rawInput.Next
-	buffering bool
-	sendBuf   []byte // a buffer of records waiting to be sent
-
-	bytesSent uint32
-	//bytesSentReset uint32
 	bytesRecv      uint32
 	bytesRecvReset uint32
 	//packetSent int64
@@ -207,7 +200,7 @@ func (c *Conn) Handshake() error {
 	if c.handshakeErr == nil {
 		c.HandshakeStatus++
 	} else {
-		c.flush()
+		c.readWriter.Flush()
 	}
 
 	if c.handshakeErr == nil && !c.handshakeComplete() {
@@ -270,18 +263,6 @@ func (c *Conn) discoverTcUrl() error {
 
 	return nil
 }
-
-/*
-func (c *Conn) handleControlMessage(cs *ChunkStream) {
-	if cs.MsgTypeID == MsgSetChunkSize {
-		c.remoteChunkSize = binary.BigEndian.Uint32(cs.ChunkData)
-		_ = c.logger.Log("level", "INFO", "event", "save remoteChunkSize", "data", c.remoteChunkSize)
-	} else if cs.MsgTypeID == MsgWindowAcknowledgementSize {
-		c.remoteWindowAckSize = binary.BigEndian.Uint32(cs.ChunkData)
-		_ = c.logger.Log("level", "INFO", "event", "save remoteWindowAckSize", "data", c.remoteWindowAckSize)
-	}
-}
-*/
 
 func (c *Conn) decodeCommandMessage(cs *ChunkStream) error {
 	if cs.MsgTypeID == MsgAMF3CommandMessage {
@@ -426,7 +407,7 @@ func (c *Conn) respConnectCmdMessage(cs *ChunkStream) error {
 	event["code"] = "NetConnection.Connect.Success"
 	event["description"] = "Connection succeeded."
 	event["objectEncoding"] = c.objectEncoding
-	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, resp, event); err != nil {
+	if err := c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, resp, event); err != nil {
 		c.logger.WithField("event", "NetConnection.Connect.Success").Error(err)
 		return err
 	}
@@ -448,7 +429,7 @@ func (c *Conn) decodeCreateStreamCmdMessage(vs []interface{}) error {
 }
 
 func (c *Conn) respCreateStreamCmdMessage(cs *ChunkStream) error {
-	return c.writeMsg(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, nil, 1 /*streamID*/)
+	return c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "_result", c.transactionID, nil, 1 /*streamID*/)
 }
 
 func (c *Conn) decodePulishCmdMessage(vs []interface{}) error {
@@ -461,7 +442,7 @@ func (c *Conn) respPulishCmdMessage(cs *ChunkStream) error {
 	event["code"] = "NetStream.Publish.Start"
 	event["description"] = "Start publising."
 
-	return c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event)
+	return c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event)
 }
 
 func (c *Conn) decodePlayCmdMessage(vs []interface{}) error {
@@ -492,7 +473,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	event["level"] = "status"
 	event["code"] = "NetStream.Play.Reset"
 	event["description"] = "Playing and resetting stream."
-	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+	if err := c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
 		return errors.Wrap(err, "send NetStream.Play.Reset message")
 	}
 
@@ -500,7 +481,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	event["level"] = "status"
 	event["code"] = "NetStream.Play.Start"
 	event["description"] = "Started playing stream."
-	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+	if err := c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
 		return errors.Wrap(err, "send NetStream.Play.Start message")
 	}
 
@@ -508,7 +489,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	event["level"] = "status"
 	event["code"] = "NetStream.Data.Start"
 	event["description"] = "Started playing stream."
-	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+	if err := c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
 		return errors.Wrap(err, "send NetStream.Data.Start message")
 	}
 
@@ -516,7 +497,7 @@ func (c *Conn) respPlayCmdMessage(cs *ChunkStream) error {
 	event["level"] = "status"
 	event["code"] = "NetStream.Play.PublishNotify"
 	event["description"] = "Started playing notify."
-	if err := c.writeMsg(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
+	if err := c.writeCommandMessage(cs.Csid, cs.MsgStreamID, "onStatus", 0, nil, event); err != nil {
 		return errors.Wrap(err, "send NetStream.Play.PublishNotify message")
 	}
 
@@ -564,7 +545,7 @@ func (c *Conn) publishOrPlay(vs []interface{}) error {
 }
 
 // send MsgAMF0CommandMessage msg
-func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
+func (c *Conn) writeCommandMessage(csid, streamID uint32, args ...interface{}) error {
 	buffer := bytes.NewBuffer([]byte{})
 	for _, v := range args {
 		if _, err := c.amfEncoder.Encode(buffer, v, amf.AMF0); err != nil {
@@ -596,18 +577,6 @@ func (c *Conn) writeMsg(csid, streamID uint32, args ...interface{}) error {
 	}
 
 	return nil
-}
-
-func (c *Conn) flush() (int, error) {
-	if len(c.sendBuf) == 0 {
-		return 0, nil
-	}
-
-	n, err := c.conn.Write(c.sendBuf)
-	c.bytesSent += uint32(n)
-	c.sendBuf = nil
-	c.buffering = false
-	return n, err
 }
 
 func (c *Conn) ConnectionState() ConnectionState {
