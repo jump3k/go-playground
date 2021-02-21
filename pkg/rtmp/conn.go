@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,12 +51,18 @@ type Conn struct {
 	tcUrl          string
 	objectEncoding int
 
+	// parse tcUrl result
+	host      string
+	port      int
+	vhost     string
+	rawQuery  string
+	urlValues url.Values
+
+	// client role and associate with stream source manager
 	isPublisher bool             // true: publish  false: play
+	streamName  string           // set while publish/play command
 	ssMgr       *streamSourceMgr // stream source manager pointer
-	streamName  string
-	domain      string
-	args        string
-	streamKey   string
+	streamKey   string           // generate by func genStreamKey
 
 	basicHdrBuf []byte                  //rtmp chunk basic header, at most 3 bytes
 	chunks      map[uint32]*ChunkStream //<CSID, ChunkStream>
@@ -67,7 +75,6 @@ type Conn struct {
 
 	bytesRecv      uint32
 	bytesRecvReset uint32
-	//packetSent int64
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -134,8 +141,9 @@ func (c *Conn) Serve() {
 		logger.Error(err)
 		return
 	}
-	c.streamKey = genStreamKey(c.domain, c.appName, c.streamName)
-	logger.WithFields(logrus.Fields{"domain": c.domain, "app": c.appName, "stream": c.streamName, "args": c.args, "streamKey": c.streamKey}).Info("")
+
+	c.streamKey = genStreamKey(c.vhost, c.appName, c.streamName)
+	logger.WithFields(logrus.Fields{"vhost": c.vhost, "app": c.appName, "stream": c.streamName, "rawQuery": c.rawQuery, "streamKey": c.streamKey}).Info("")
 
 	if c.isPublisher { // publish
 		logger = c.logger.WithFields(logrus.Fields{"event": "publish"})
@@ -238,27 +246,59 @@ func (c *Conn) handleCommandMessage() error {
 }
 
 func (c *Conn) discoverTcUrl() error {
-	matches := reTcUrl.FindStringSubmatch(c.tcUrl)
+	u, err := url.Parse(c.tcUrl)
+	if err != nil {
+		return err
+	}
+	c.logger.Tracef("tcUrl: %#v", u)
 
-	host := matches[1]  //ip addr or domain
-	vhost := matches[6] //vhost=?
+	if strings.ToLower(u.Scheme) != "rtmp" {
+		return errors.Errorf("not rtmp scheme: %s", u.Scheme)
+	}
 
-	c.domain = vhost
-	if c.domain == "" {
-		c.domain = host
+	c.rawQuery = u.RawQuery // vhost=...&token=...
+	c.urlValues, _ = url.ParseQuery(c.rawQuery)
+
+	parseVhost := func() {
+		if v, ok := c.urlValues["vhost"]; ok {
+			c.vhost = v[0]
+		}
+	}
+
+	if strings.Contains(u.Host, ":") { //host:port
+		host, port, err := net.SplitHostPort(u.Host)
+		if err != nil {
+			return errors.Wrap(err, "split host port")
+		}
+		c.host = host
+		c.port, _ = strconv.Atoi(port)
+
+		if u.Host == c.LocalAddr().String() { // ip:port
+			//need to parse vhost parameter
+			parseVhost()
+		} else { // domain:port
+			c.vhost = host
+		}
+	} else { // host
+		c.host = u.Host
+
+		lIp, lPort, _ := net.SplitHostPort(c.LocalAddr().String())
+		if c.host == lIp {
+			// need to parse vhost parameter
+			parseVhost()
+		} else {
+			c.vhost = c.host
+		}
+		c.port, _ = strconv.Atoi(lPort)
+	}
+
+	if c.vhost == "" {
+		c.vhost = "_defaultVhost_"
 	}
 
 	if idx := strings.Index(c.appName, "?"); idx > 0 {
 		c.appName = c.appName[:idx]
 		c.appName = strings.Trim(c.appName, " ")
-	}
-
-	if idx := strings.Index(c.streamName, "?"); idx > 0 {
-		c.args = c.streamName[idx+1:]
-		c.streamName = c.streamName[:idx]
-
-		c.args = strings.Trim(c.args, " ")
-		c.streamName = strings.Trim(c.streamName, " ")
 	}
 
 	return nil
