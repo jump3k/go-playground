@@ -86,7 +86,11 @@ func (ss *streamSource) delSubscriber(sub *subscriber) bool {
 	return true
 }
 
-func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
+func (ss *streamSource) cacheAVMetaPacket(pkt *av.Packet) {
+	ss.cache.Write(pkt)
+}
+
+func (ss *streamSource) dispatchAVPacket(cs *ChunkStream, pkt *av.Packet) {
 	ss.addSubMux.Lock()
 	defer ss.addSubMux.Unlock() //TODO: lock big
 
@@ -95,9 +99,8 @@ func (ss *streamSource) dispatchAvPkt(cs *ChunkStream, pkt *av.Packet) {
 			continue
 		}
 
-		sub.sendCachePkt(ss.cache)
-		sub.writeAvPktCh(pkt)
-		sub.calcBaseTimeStamp()
+		sub.sendCachePacket(ss.cache)
+		sub.writeAVPacket(pkt) // write channel actually
 	}
 }
 

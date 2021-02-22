@@ -59,8 +59,8 @@ loopRecvAVChunkStream:
 			p.logger.WithField("event", "flv Demux Hdr").Error(err)
 		}
 
-		ss.cache.Write(avPkt)
-		ss.dispatchAvPkt(cs, avPkt) //dispatch av pkt
+		ss.cacheAVMetaPacket(avPkt)    // cache av meta info
+		ss.dispatchAVPacket(cs, avPkt) // dispatch av pkt
 	}
 }
 
