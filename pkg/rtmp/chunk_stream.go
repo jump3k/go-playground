@@ -39,63 +39,74 @@ type ChunkStream struct {
 	bodyRemain   uint32
 }
 
-func newChunkStream(fmt uint8, csid uint32) *ChunkStream {
-	cs := &ChunkStream{
-		ChunkHeader: ChunkHeader{
-			ChunkBasicHeader: ChunkBasicHeader{
-				Fmt: fmt,
-				Csid: csid,
-			},
-		},
-		msgHdrBuf: make([]byte, 11),
+func newChunkBasicHeader(fmt uint8, csid uint32) ChunkBasicHeader {
+	return ChunkBasicHeader{
+		Fmt:  fmt,
+		Csid: csid,
 	}
+}
 
+func newChunkMessageHeader(timeStamp uint32, msgLength uint32, msgTypeID RtmpMsgTypeID, msgStreamID uint32) ChunkMessageHeader {
+	return ChunkMessageHeader{
+		TimeStamp:   timeStamp,
+		MsgLength:   msgLength,
+		MsgTypeID:   msgTypeID,
+		MsgStreamID: msgStreamID,
+	}
+}
+
+func newChunkStream() *ChunkStream {
+	return &ChunkStream{}
+}
+
+func (cs *ChunkStream) setBasicHeader(fmt uint8, csid uint32) *ChunkStream {
+	cs.ChunkHeader.ChunkBasicHeader = newChunkBasicHeader(fmt, csid)
+	return cs
+}
+
+func (cs *ChunkStream) setMessageHeader(timeStamp uint32, msgLength uint32, msgTypeID RtmpMsgTypeID, msgStreamID uint32) *ChunkStream {
+	cs.ChunkHeader.ChunkMessageHeader = newChunkMessageHeader(timeStamp, msgLength, msgTypeID, msgStreamID)
+	return cs
+}
+
+func (cs *ChunkStream) setChunkBodyBuffer(length uint32) *ChunkStream {
+	cs.ChunkBody = make([]byte, length)
+	return cs
+}
+
+func (cs *ChunkStream) setMessageHeaderBuffer(size int) *ChunkStream {
+	cs.msgHdrBuf = make([]byte, 11)
 	return cs
 }
 
 func NewProtolControlMessage(typeID RtmpMsgTypeID, length uint32, value uint32) *ChunkStream {
-	cs := &ChunkStream{
-		ChunkHeader: ChunkHeader{
-			ChunkBasicHeader: ChunkBasicHeader{
-				Fmt:  0,
-				Csid: 2,
-			},
-			ChunkMessageHeader: ChunkMessageHeader{
-				MsgTypeID:   typeID,
-				MsgStreamID: 0,
-				MsgLength:   length,
-			},
-		},
-		ChunkBody: make([]byte, length),
-	}
+	cs := newChunkStream()
+	cs = cs.setBasicHeader(0, 2)
+	cs = cs.setMessageHeader(0, length, typeID, 0)
+	cs = cs.setChunkBodyBuffer(length) // length must >= 4
 
-	//putU32BE(cs.ChunkBody[:length], value)
-	uintAsbyteSlice(value, cs.ChunkBody[:4], true)
+	uintAsbyteSlice(value, cs.ChunkBody[:4], true) // fill chunk body
 
 	return cs
 }
 
 func NewUserControlMessage(eventType, buflen uint32) *ChunkStream {
 	buflen += 2
-
-	cs := &ChunkStream{
-		ChunkHeader: ChunkHeader{
-			ChunkBasicHeader: ChunkBasicHeader{
-				Fmt:  0,
-				Csid: 2,
-			},
-			ChunkMessageHeader: ChunkMessageHeader{
-				MsgTypeID:   MsgUserControlMessage,
-				MsgStreamID: 1,
-				MsgLength:   buflen,
-			},
-		},
-		ChunkBody: make([]byte, buflen),
-	}
+	cs := newChunkStream()
+	cs = cs.setBasicHeader(0, 2)
+	cs = cs.setMessageHeader(0, buflen, MsgUserControlMessage, 1)
+	cs = cs.setChunkBodyBuffer(buflen)
 
 	cs.ChunkBody[0] = byte(eventType >> 8 & 0xff)
 	cs.ChunkBody[1] = byte(eventType & 0xff)
 
+	return cs
+}
+
+func newChunkStreamForRead(fmt uint8, csid uint32) *ChunkStream {
+	cs := newChunkStream()
+	cs = cs.setBasicHeader(fmt, csid)
+	cs = cs.setMessageHeaderBuffer(11)
 	return cs
 }
 
@@ -104,12 +115,12 @@ func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 	for {
 		fmt, csid, err := c.readChunkBasicHeader(basicHdrBuf)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "read chunk basic header")
 		}
 
 		cs, ok := c.chunks[csid]
 		if !ok {
-			cs = newChunkStream(fmt, csid)
+			cs = newChunkStreamForRead(fmt, csid)
 			c.chunks[cs.Csid] = cs
 		}
 
