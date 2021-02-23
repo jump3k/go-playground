@@ -219,7 +219,7 @@ func (c *Conn) handleCommandMessage() error {
 		cs, err := c.readChunkStream(c.basicHdrBuf)
 		if err != nil {
 			logger.Error(err)
-			return err
+			return errors.Wrap(err, "read chunk stream")
 		}
 		logger.WithField("data", fmt.Sprintf("%#v", cs)).Trace("")
 
@@ -227,7 +227,7 @@ func (c *Conn) handleCommandMessage() error {
 		case MsgAMF0CommandMessage, MsgAMF3CommandMessage:
 			if err := c.decodeCommandMessage(cs); err != nil {
 				logger.WithField("action", "decodeCommandMessage").Error(err)
-				return err
+				return errors.Wrap(err, "decode command message")
 			}
 		}
 

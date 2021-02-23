@@ -125,11 +125,11 @@ func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 		}
 
 		if err := c.readChunkMessageHeader(cs, fmt); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "read chunk message header")
 		}
 
 		if err := c.readChunkMessageBody(cs); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "read chunk message body")
 		}
 
 		if cs.gotBodyFull {
@@ -140,7 +140,7 @@ func (c *Conn) readChunkStream(basicHdrBuf []byte) (*ChunkStream, error) {
 }
 
 func (c *Conn) readChunkBasicHeader(basicHdrBuf []byte) (uint8, uint32, error) {
-	h, err := c.ReadUint(basicHdrBuf[0:1], true)
+	h, err := c.readUint(basicHdrBuf[0:1], true)
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "basic header requires 1 bytes")
 	}
@@ -150,13 +150,13 @@ func (c *Conn) readChunkBasicHeader(basicHdrBuf []byte) (uint8, uint32, error) {
 
 	switch csid {
 	case 0: // 64-319, 2Bytes chunk basic header
-		id, err := c.ReadUint(basicHdrBuf[1:2], false)
+		id, err := c.readUint(basicHdrBuf[1:2], false)
 		if err != nil {
 			return fmt, csid, errors.Wrap(err, "basic header requires 2 bytes")
 		}
 		csid = id + 64
 	case 1: // 64-65599, 3Bytes chunk basic header
-		id, err := c.ReadUint(basicHdrBuf[1:3], false)
+		id, err := c.readUint(basicHdrBuf[1:3], false)
 		if err != nil {
 			return fmt, csid, errors.Wrap(err, "basic header requires 3 bytes")
 		}
@@ -231,13 +231,13 @@ func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
 			case 0:
 				if cs.timeExtended {
 					b := make([]byte, 4)
-					cs.TimeStamp, _ = c.ReadUint(b, true)
+					cs.TimeStamp, _ = c.readUint(b, true)
 				}
 			case 1, 2:
 				timedelta := cs.ExtendedTimeStamp
 				if cs.timeExtended {
 					b := make([]byte, 4)
-					timedelta, _ = c.ReadUint(b, true)
+					timedelta, _ = c.readUint(b, true)
 				}
 				cs.TimeStamp += timedelta
 			}
@@ -441,7 +441,7 @@ END:
 	return nil
 }
 
-func (c *Conn) ReadUint(b []byte, bigEndian bool) (uint32, error) {
+func (c *Conn) readUint(b []byte, bigEndian bool) (uint32, error) {
 	if nr, err := c.readWriter.Read(b); err != nil {
 		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("read %d byte, actual: %d", len(b), nr)}).Error(err)
 		return 0, err
@@ -449,20 +449,6 @@ func (c *Conn) ReadUint(b []byte, bigEndian bool) (uint32, error) {
 
 	return byteSliceAsUint(b, bigEndian), nil
 }
-
-/*
-func (c *Conn) writeUint(val uint32, nbytes int, bigEndian bool) error {
-	buf := make([]byte, nbytes)
-	uintAsbyteSlice(val, buf, bigEndian)
-
-	if nw, err := c.readWriter.Write(buf); err != nil {
-		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("write %d byte, actual: %d", nbytes, nw)}).Error(err)
-		return err
-	}
-
-	return nil
-}
-*/
 
 func (c *Conn) writeUint(val uint32, buf []byte, bigEndian bool) error {
 	uintAsbyteSlice(val, buf, bigEndian)
