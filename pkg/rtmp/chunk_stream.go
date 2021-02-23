@@ -250,7 +250,7 @@ func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
 			if cs.timeExtended {
 				b, err := c.readWriter.Peek(4)
 				if err != nil {
-					return err
+					return errors.Wrap(err, "peek 4 bytes")
 				}
 
 				tmpTimeStamp := binary.BigEndian.Uint32(b)
@@ -307,8 +307,12 @@ func (c *Conn) writeChunkStream(cs *ChunkStream) error {
 			cs.Fmt = 3
 		}
 
-		if err := c.writeChunkHeader(cs); err != nil { //write rtmp chunk header
-			return err
+		if err := c.writeChunkBasicHeader(cs.Fmt, cs.Csid); err != nil {
+			return errors.Wrap(err, "write chunk basic header")
+		}
+
+		if err := c.writeChunkMessageHeader(cs); err != nil {
+			return errors.Wrap(err, "write chunk message header")
 		}
 
 		inc := c.localChunksize
@@ -321,13 +325,13 @@ func (c *Conn) writeChunkStream(cs *ChunkStream) error {
 		totalLen += inc
 
 		buf := cs.ChunkBody[start : start+inc]
-		if _, err := c.readWriter.Write(buf); err != nil { //write rtmp chunk body
-			return err
+		if _, err := c.readWriter.Write(buf); err != nil {
+			return errors.Wrap(err, "write chunk body")
 		}
 	}
 
 	if err := c.readWriter.Flush(); err != nil {
-		return err
+		return errors.Wrap(err, "flush chunk stream")
 	}
 
 	return nil
@@ -365,36 +369,39 @@ func (c *Conn) ack(size uint32) {
 	}
 }
 
-func (c *Conn) writeChunkHeader(cs *ChunkStream) error {
-	// write basic header
-	h := uint32(cs.Fmt) << 6
+func (c *Conn) writeChunkBasicHeader(fmt uint8, csid uint32) error {
+	h := uint32(fmt) << 6
+
 	switch {
-	case cs.Csid < 64:
-		h |= cs.Csid
+	case csid < 64:
+		h |= csid
 		if err := c.writeUint(h, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
-	case cs.Csid-64 < 256:
+	case csid-64 < 256:
 		h |= 0
 		if err := c.writeUint(h, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
 
-		if err := c.writeUint(cs.Csid-64, c.basicHdrBuf[0:1], false); err != nil {
+		if err := c.writeUint(csid-64, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
-	case cs.Csid-64 < 65536:
+	case csid-64 < 65536:
 		h |= 1
 		if err := c.writeUint(h, c.basicHdrBuf[0:1], false); err != nil {
 			return err
 		}
 
-		if err := c.writeUint(cs.Csid-64, c.basicHdrBuf[0:2], false); err != nil {
+		if err := c.writeUint(csid-64, c.basicHdrBuf[0:2], false); err != nil {
 			return err
 		}
 	}
 
-	// write message header
+	return nil
+}
+
+func (c *Conn) writeChunkMessageHeader(cs *ChunkStream) error {
 	if cs.msgHdrBuf == nil {
 		cs.msgHdrBuf = make([]byte, 11)
 	}
