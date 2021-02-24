@@ -20,7 +20,7 @@ func Server(conn net.Conn, ssMgr *streamSourceMgr, config *Config) *Conn {
 	c.handshakeFn = c.serverHandshake
 
 	//TODO: config
-	c.localChunksize = 128
+	c.localChunksize = 60000
 	c.remoteChunkSize = 128
 	c.localWindowAckSize = 2500000
 	c.remoteWindowAckSize = 250000

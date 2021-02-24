@@ -324,14 +324,13 @@ func (c *Conn) writeChunkStream(cs *ChunkStream) error {
 		}
 		totalLen += inc
 
-		buf := cs.ChunkBody[start : start+inc]
-		if _, err := c.readWriter.Write(buf); err != nil {
+		if err := c.writeChunkMessageBody(cs, start, inc); err != nil {
 			return errors.Wrap(err, "write chunk body")
 		}
-	}
 
-	if err := c.readWriter.Flush(); err != nil {
-		return errors.Wrap(err, "flush chunk stream")
+		if err := c.readWriter.Flush(); err != nil {
+			return errors.Wrap(err, "flush chunk stream")
+		}
 	}
 
 	return nil
@@ -443,6 +442,15 @@ END:
 		if err := c.writeUint(cs.TimeStamp, cs.msgHdrBuf[0:4], true); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (c *Conn) writeChunkMessageBody(cs *ChunkStream, start, chunkSize uint32) error {
+	buf := cs.ChunkBody[start : start+chunkSize]
+	if _, err := c.readWriter.Write(buf); err != nil {
+		return err
 	}
 
 	return nil
