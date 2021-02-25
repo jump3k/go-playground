@@ -589,24 +589,13 @@ func (c *Conn) writeCommandMessage(csid, streamID uint32, args ...interface{}) e
 	}
 	cmdMsgBody := buffer.Bytes()
 
-	cs := ChunkStream{
-		ChunkHeader: ChunkHeader{
-			ChunkBasicHeader: ChunkBasicHeader{
-				Fmt:  0,
-				Csid: csid,
-			},
-			ChunkMessageHeader: ChunkMessageHeader{
-				TimeStamp:   0,
-				MsgLength:   uint32(len(cmdMsgBody)),
-				MsgTypeID:   MsgAMF0CommandMessage,
-				MsgStreamID: streamID,
-			},
-		},
-		ChunkBody: cmdMsgBody,
-		msgHdrBuf: make([]byte, 11),
-	}
+	cs := newChunkStream()
+	cs = cs.setBasicHeader(0, csid)
+	cs = cs.setMessageHeader(0, uint32(len(cmdMsgBody)), MsgAMF0CommandMessage, streamID)
+	cs.ChunkBody = cmdMsgBody
+	cs = cs.setMessageHeaderBuffer(11)
 
-	if err := c.writeChunkStream(&cs); err != nil {
+	if err := c.writeChunkStream(cs); err != nil {
 		return err
 	}
 

@@ -46,6 +46,9 @@ github.com/golang/protobuf/proto
 # github.com/google/uuid v1.1.4
 ## explicit
 github.com/google/uuid
+# github.com/google/vectorio v0.0.0-20160107201919-f555dd215279
+## explicit
+github.com/google/vectorio
 # github.com/gwuhaolin/livego v0.0.0-20210119152854-12948dfb6782
 ## explicit
 github.com/gwuhaolin/livego/protocol/amf
