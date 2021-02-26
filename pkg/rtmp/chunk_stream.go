@@ -328,8 +328,10 @@ func (c *Conn) writeChunkStream(cs *ChunkStream) error {
 			return errors.Wrap(err, "write chunk body")
 		}
 
-		if err := c.readWriter.Flush(); err != nil {
+		if nw, err := c.writeBuffer.WriteTo(c.conn); err != nil {
 			return errors.Wrap(err, "flush chunk stream")
+		} else {
+			logrus.Tracef("wrote %d bytes", nw)
 		}
 	}
 
@@ -449,9 +451,10 @@ END:
 
 func (c *Conn) writeChunkMessageBody(cs *ChunkStream, start, chunkSize uint32) error {
 	buf := cs.ChunkBody[start : start+chunkSize]
-	if _, err := c.readWriter.Write(buf); err != nil {
-		return err
-	}
+
+	//sendBuf := make([]byte, chunkSize)
+	//copy(sendBuf, buf)
+	c.writeBuffer = append(c.writeBuffer, buf)
 
 	return nil
 }
@@ -467,10 +470,10 @@ func (c *Conn) readUint(b []byte, bigEndian bool) (uint32, error) {
 
 func (c *Conn) writeUint(val uint32, buf []byte, bigEndian bool) error {
 	uintAsbyteSlice(val, buf, bigEndian)
-	if nw, err := c.readWriter.Write(buf); err != nil {
-		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("write %d byte, actual: %d", len(buf), nw)}).Error(err)
-		return err
-	}
+
+	sendBuf := make([]byte, len(buf))
+	copy(sendBuf, buf)
+	c.writeBuffer = append(c.writeBuffer, sendBuf)
 
 	return nil
 }

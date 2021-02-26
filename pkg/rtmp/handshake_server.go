@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+
+	"github.com/sirupsen/logrus"
 )
 
 func (c *Conn) serverHandshake() error {
@@ -57,11 +59,12 @@ func (c *Conn) serverHandshake() error {
 	}
 
 	// write S0S1S2
-	if _, err := c.readWriter.Write(s0s1s2); err != nil {
+	c.writeBuffer = append(c.writeBuffer, s0s1s2)
+	if nw, err := c.writeBuffer.WriteTo(c.conn); err != nil {
+		logrus.Errorf("failed to write %d bytes, actual: %d, error: %v", len(s0s1s2), nw, err)
 		return err
-	}
-	if err := c.readWriter.Flush(); err != nil {
-		return err
+	} else {
+		logrus.Tracef("wrote %d bytes", nw)
 	}
 
 	// read C2

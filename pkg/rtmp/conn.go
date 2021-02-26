@@ -19,9 +19,10 @@ import (
 
 type Conn struct {
 	// constant
-	conn       net.Conn
-	readWriter *readWriter // reader & writer with buffer
-	isClient   bool
+	conn        net.Conn
+	readWriter  *readWriter // reader & writer with buffer
+	writeBuffer net.Buffers
+	isClient    bool
 
 	// config and logger pointer
 	config *Config
@@ -202,7 +203,7 @@ func (c *Conn) Handshake() error {
 	if c.handshakeErr == nil {
 		c.HandshakeStatus++
 	} else {
-		c.readWriter.Flush()
+		_, _ = c.writeBuffer.WriteTo(c.conn)
 	}
 
 	if c.handshakeErr == nil && !c.handshakeComplete() {
