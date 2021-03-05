@@ -13,6 +13,7 @@ require (
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/lestrrat-go/strftime v1.0.4 // indirect
 	github.com/nats-io/nats.go v1.9.1
+	github.com/panjf2000/ants/v2 v2.4.3
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.3.0
 	github.com/satori/go.uuid v1.2.0
