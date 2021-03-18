@@ -7,9 +7,6 @@ import (
 
 type Config struct {
 	Logger *logrus.Logger
-
-	connReadBufSize  int
-	connWriteBufSize int
 }
 
 type ConnectionState struct {

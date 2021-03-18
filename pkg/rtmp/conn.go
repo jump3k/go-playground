@@ -1,6 +1,7 @@
 package rtmp
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -19,9 +20,11 @@ import (
 
 type Conn struct {
 	// constant
-	conn       net.Conn
-	readWriter *readWriter // reader & writer with buffer
-	isClient   bool
+	conn     net.Conn
+	isClient bool
+
+	reader      *bufio.Reader
+	writeBuffer net.Buffers
 
 	// config and logger pointer
 	config *Config
@@ -97,11 +100,26 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) Read(b []byte) (int, error) {
-	return c.conn.Read(b)
+	return io.ReadAtLeast(c.reader, b, len(b))
+	//return c.conn.Read(b)
 }
 
 func (c *Conn) Write(b []byte) (int, error) {
-	return c.conn.Write(b)
+	c.writeBuffer = append(c.writeBuffer, b)
+	if len(c.writeBuffer) > 0 {
+		if nw, err := c.writeBuffer.WriteTo(c.conn); err != nil {
+			return int(nw), err
+		}
+	}
+	return 0, nil
+}
+
+func (c *Conn) Flush() error {
+	//logrus.Errorf("buff size: %d", len(c.writeBuffer))
+	if _, err := c.writeBuffer.WriteTo(c.conn); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Conn) Serve() {
@@ -202,7 +220,7 @@ func (c *Conn) Handshake() error {
 	if c.handshakeErr == nil {
 		c.HandshakeStatus++
 	} else {
-		c.readWriter.Flush()
+		c.Flush()
 	}
 
 	if c.handshakeErr == nil && !c.handshakeComplete() {

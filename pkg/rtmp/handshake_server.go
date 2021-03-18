@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"math/rand"
 )
 
@@ -29,7 +28,7 @@ func (c *Conn) serverHandshake() error {
 	s2 := s0s1s2[1536+1:]
 
 	// read C0C1
-	if _, err := io.ReadFull(c.readWriter, c0c1); err != nil {
+	if _, err := c.Read(c0c1); err != nil {
 		return err
 	}
 
@@ -57,15 +56,15 @@ func (c *Conn) serverHandshake() error {
 	}
 
 	// write S0S1S2
-	if _, err := c.readWriter.Write(s0s1s2); err != nil {
+	if _, err := c.Write(s0s1s2); err != nil {
 		return err
 	}
-	if err := c.readWriter.Flush(); err != nil {
+	if err := c.Flush(); err != nil {
 		return err
 	}
 
 	// read C2
-	if _, err := io.ReadFull(c.readWriter, c2); err != nil {
+	if _, err := c.Read(c2); err != nil {
 		return err
 	}
 

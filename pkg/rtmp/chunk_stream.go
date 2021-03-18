@@ -183,7 +183,7 @@ func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
 	var buf []byte
 	if cs.msgHdrSize > 0 {
 		buf = cs.msgHdrBuf[0:cs.msgHdrSize]
-		if nr, err := c.readWriter.Read(buf); err != nil || nr != cs.msgHdrSize {
+		if nr, err := c.Read(buf); err != nil || nr != cs.msgHdrSize {
 			return errors.Wrapf(err, "read %d bytes message header", cs.msgHdrSize)
 		}
 	}
@@ -248,14 +248,14 @@ func (c *Conn) readChunkMessageHeader(cs *ChunkStream, fmt uint8) error {
 			cs.ChunkBody = make([]byte, int(cs.MsgLength))
 		} else {
 			if cs.timeExtended {
-				b, err := c.readWriter.Peek(4)
+				b, err := c.reader.Peek(4)
 				if err != nil {
 					return errors.Wrap(err, "peek 4 bytes")
 				}
 
 				tmpTimeStamp := binary.BigEndian.Uint32(b)
 				if tmpTimeStamp == cs.TimeStamp {
-					_, _ = c.readWriter.Discard(4)
+					_, _ = c.reader.Discard(4)
 				}
 			}
 		}
@@ -271,7 +271,7 @@ func (c *Conn) readChunkMessageBody(cs *ChunkStream) error {
 	}
 
 	buf := cs.ChunkBody[cs.bodyIndex : cs.bodyIndex+size]
-	if nr, err := c.readWriter.Read(buf); err != nil || nr != int(size) {
+	if nr, err := c.Read(buf); err != nil || nr != int(size) {
 		return errors.Wrapf(err, "read %d bytes, autual: %d", size, nr)
 	} else {
 		cs.bodyIndex += uint32(nr)
@@ -327,10 +327,10 @@ func (c *Conn) writeChunkStream(cs *ChunkStream) error {
 		if err := c.writeChunkMessageBody(cs, start, inc); err != nil {
 			return errors.Wrap(err, "write chunk body")
 		}
+	}
 
-		if err := c.readWriter.Flush(); err != nil {
-			return errors.Wrap(err, "flush chunk stream")
-		}
+	if err := c.Flush(); err != nil {
+		return errors.Wrap(err, "flush chunk stream")
 	}
 
 	return nil
@@ -449,7 +449,7 @@ END:
 
 func (c *Conn) writeChunkMessageBody(cs *ChunkStream, start, chunkSize uint32) error {
 	buf := cs.ChunkBody[start : start+chunkSize]
-	if _, err := c.readWriter.Write(buf); err != nil {
+	if _, err := c.Write(buf); err != nil {
 		return err
 	}
 
@@ -457,7 +457,7 @@ func (c *Conn) writeChunkMessageBody(cs *ChunkStream, start, chunkSize uint32) e
 }
 
 func (c *Conn) readUint(b []byte, bigEndian bool) (uint32, error) {
-	if nr, err := c.readWriter.Read(b); err != nil {
+	if nr, err := c.Read(b); err != nil {
 		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("read %d byte, actual: %d", len(b), nr)}).Error(err)
 		return 0, err
 	}
@@ -467,7 +467,7 @@ func (c *Conn) readUint(b []byte, bigEndian bool) (uint32, error) {
 
 func (c *Conn) writeUint(val uint32, buf []byte, bigEndian bool) error {
 	uintAsbyteSlice(val, buf, bigEndian)
-	if nw, err := c.readWriter.Write(buf); err != nil {
+	if nw, err := c.Write(buf); err != nil {
 		c.logger.WithFields(logrus.Fields{"event": fmt.Sprintf("write %d byte, actual: %d", len(buf), nw)}).Error(err)
 		return err
 	}
